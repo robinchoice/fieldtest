@@ -3,17 +3,18 @@
   import { onMount } from 'svelte';
   import { auth, checkAuth } from '$lib/auth.svelte';
   import Button from '$lib/components/Button.svelte';
+  import { t } from '$lib/i18n';
 
   onMount(checkAuth);
 </script>
 
 <main>
   <h1>{APP_NAME}</h1>
-  <p>Ein Satz dazu, was dieser Prototyp kann.</p>
+  <p>{t().tagline}</p>
   {#if auth.user}
-    <Button href="/dashboard">Zur App</Button>
+    <Button href="/dashboard">{t().openApp}</Button>
   {:else}
-    <Button href="/login">Einloggen</Button>
+    <Button href="/login">{t().logIn}</Button>
   {/if}
 </main>
 

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pebble Wallet</title>
+<!-- Demo prototype for trying Fieldtest. It has a deliberate UX bug: Continue on
+     the backup screen only works after ticking a checkbox below the fold. -->
+<script src="/api/v1/sdk/overlay.js" async></script>
+<style>
+  body { margin: 0; background: #e9eef0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #17262b; }
+  .app { max-width: 420px; min-height: 100vh; margin: 0 auto; background: #fff; display: flex; flex-direction: column; box-shadow: 0 0 0 1px #d5dde0; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #edf1f2; font-weight: 700; }
+  header i { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: #0e7c86; margin-right: 8px; vertical-align: -3px; }
+  main { flex: 1; padding: 24px 20px 140px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 24px; line-height: 1.2; margin: 8px 0 0; }
+  p { margin: 0; color: #4d5f64; line-height: 1.5; }
+  button { appearance: none; border: 0; border-radius: 12px; padding: 14px 16px; font: inherit; font-weight: 600; background: #0e7c86; color: #fff; cursor: pointer; width: 100%; }
+  button.secondary { background: #eef4f5; color: #0e7c86; }
+  .hero { height: 180px; border-radius: 16px; background: radial-gradient(circle at 30% 30%, #9fd8dc, #0e7c86); }
+  .words { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .words span { background: #f3f7f8; border-radius: 8px; padding: 10px 8px; font-size: 14px; }
+  .words b { color: #8a9a9e; font-weight: 500; margin-right: 4px; }
+  .spacer { height: 320px; display: flex; align-items: flex-end; color: #8a9a9e; font-size: 13px; }
+  label.check { display: flex; gap: 10px; align-items: center; padding: 12px; border: 1px dashed #c6d3d6; border-radius: 10px; }
+  .balance { font-size: 40px; font-weight: 700; }
+  .balance small { font-size: 16px; color: #6b7c80; font-weight: 500; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #4d5f64; }
+  .field input { font: inherit; font-size: 20px; padding: 12px; border: 1px solid #c6d3d6; border-radius: 10px; }
+  .qr { width: 120px; height: 120px; align-self: center; border: 8px solid #fff; outline: 1px solid #d5dde0; background: repeating-conic-gradient(#17262b 0 25%, #fff 0 50%) 0 0 / 20px 20px; }
+  .note { font-size: 13px; color: #6b7c80; text-align: center; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><span><i></i>Pebble</span></header>
+  <main id="screen"></main>
+</div>
+<script>
+  const words = ['orbit', 'maple', 'cinder', 'velvet', 'harbor', 'quartz', 'lumen', 'tundra', 'fable', 'copper', 'meadow', 'signal'];
+  let balance = 0;
+  let backedUp = false;
+  const screens = {
+    Welcome: () => `<div class="hero"></div><h1>Your keys, your sats.</h1>
+      <p>Pebble is a self-custodial Lightning wallet. Create a wallet in under a minute.</p>
+      <button data-go="Backup">Create wallet</button><button class="secondary">Restore existing wallet</button>`,
+    Backup: () => `<h1>Write down your 12 words</h1><p>Anyone with these words can spend your sats. Keep them offline.</p>
+      <div class="words">${words.map((w, i) => `<span><b>${i + 1}</b>${w}</span>`).join('')}</div>
+      <button id="continue">Continue</button><div class="spacer">Scroll for more</div>
+      <label class="check"><input type="checkbox" id="check"> I have written down my words</label>`,
+    Home: () => `<p>Balance</p><div class="balance">${balance.toLocaleString('en-US')} <small>sats</small></div>
+      <div class="row"><button data-go="Receive">Receive</button><button class="secondary">Send</button></div>
+      <p class="note">${balance ? 'Payment received' : 'No transactions yet.'}</p>`,
+    Receive: () => `<h1>Receive</h1><label class="field">Amount (BTC)<input id="amount" inputmode="numeric" value="1000"></label>
+      <button id="invoice">Create invoice</button><div id="box"></div><button class="secondary" data-go="Home">Back</button>`,
+  };
+  function show(name) {
+    document.getElementById('screen').innerHTML = screens[name]();
+    window.Fieldtest?.screen(name);
+  }
+  document.addEventListener('change', (e) => { if (e.target.id === 'check') backedUp = e.target.checked; });
+  document.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-go]');
+    if (go) return show(go.dataset.go);
+    if (e.target.id === 'continue' && backedUp) {
+      window.Fieldtest?.goal('Back up your wallet');
+      show('Home');
+    }
+    if (e.target.id === 'invoice') {
+      const amount = Number.parseInt(document.getElementById('amount').value, 10) || 1000;
+      document.getElementById('box').innerHTML = `<div class="qr"></div><p class="note">Invoice for ${amount.toLocaleString('en-US')} sats</p>
+        <button class="secondary" id="pay" data-amount="${amount}">Simulate incoming payment</button>`;
+    }
+    if (e.target.id === 'pay') {
+      balance += Number(e.target.dataset.amount);
+      window.Fieldtest?.goal('Receive your first sats');
+      show('Home');
+    }
+  });
+  // The overlay loads async and may arrive after the first screen
+  addEventListener('load', () => window.Fieldtest?.screen('Welcome'));
+  show('Welcome');
+</script>
+</body>
+</html>

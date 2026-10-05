@@ -40,7 +40,8 @@ test('a magic link opens the dashboard until logout', async ({ page }) => {
 
   await page.goto(`/auth/verify?token=${token}`);
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('heading', { name: `Hallo ${email.split('@')[0]}` })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Testrunden' })).toBeVisible();
+  await expect(page.getByText(email.split('@')[0]!).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Abmelden' }).click();
   await expect(page).toHaveURL(/\/$/);

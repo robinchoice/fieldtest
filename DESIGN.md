@@ -58,6 +58,7 @@ Jedes Produkt bekommt einen Ausschnitt aus dem Farbband. Der Ausschnitt enthält
 | Fahrbar | 1 | 1,00–1,35 | `#F2545B` `#F45E57` `#F56853` | `#B3262D` `#B12C2A` `#AF3126` | Route mit Ziel |
 | Music Hub | 2 | 1,35–2,20 | `#F56853` `#F97F4A` `#F99747` | `#AF3126` `#AA3F1E` `#A14B16` | Welle |
 | Döner-App | 3 | 2,55–3,20 | `#F6A94A` `#F3BA4D` `#D7C45B` | `#965410` `#8B5D0A` `#726214` | Spieß |
+| Fieldtest | 3 | 3,20–3,85 | `#D7C45B` `#ACC870` `#80CD84` | `#726214` `#4F6527` `#2D693B` | Blitz im Rahmen |
 | MusicLink | 4 | 3,85–4,55 | `#80CD84` `#64CC9E` `#57C6BB` | `#2D693B` `#1B6A52` `#196A69` | zwei Ringe |
 | DocPilot | 5 | 4,75–5,45 | `#50C3CC` `#4DBBE2` `#66ABEB` | `#176A77` `#19668B` `#265696` | Blatt |
 | Savor | 6 | 5,50–6,45 | `#6AA9EC` `#8C93F7` `#A696F5` | `#285498` `#3A3FA7` `#5039A4` | Ring mit Kern |

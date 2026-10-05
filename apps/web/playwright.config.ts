@@ -11,6 +11,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   use: {
     baseURL: 'http://localhost:5173',
+    // German is the default language, the texts in the tests are German
+    locale: 'de-DE',
     // Rate limits live in the database, so each run counts against its own address
     extraHTTPHeaders: { 'x-forwarded-for': crypto.randomUUID() },
   },

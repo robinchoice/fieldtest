@@ -1,4 +1,5 @@
 import dns from 'node:dns';
+import { pickLocale } from '@app/shared';
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { captureException } from './monitoring.server';
 
@@ -20,9 +21,14 @@ const SECURITY_HEADERS = {
 };
 
 export const handle: Handle = async ({ event, resolve }) => {
+  // The language chosen with the button, else the browser's
+  const locale = pickLocale(event.cookies.get('locale') ?? event.request.headers.get('accept-language'));
+  event.locals.locale = locale;
   const response = event.url.pathname.startsWith('/api/')
     ? await proxyToApi(event.request, event.url)
-    : await resolve(event);
+    : await resolve(event, {
+        transformPageChunk: ({ html }) => html.replace('<html lang="de">', `<html lang="${locale}">`),
+      });
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, value);
   return response;
 };

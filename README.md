@@ -1,72 +1,67 @@
-# starter
+# Fieldtest
 
-Vorlage für Web- und Mobile-Prototypen: Bun, Hono, SvelteKit, Drizzle und Postgres, dazu optional eine Flutter-App gegen dieselbe API. Login per Magic Link (Web) oder Code (App), Mail über SMTP, Rate-Limit, Security-Header mit CSP, GlitchTip, Healthcheck, CI mit Browser-Test, Dependabot und Coolify-Deploy sind fertig eingebaut.
+Tester-Service für Prototypen: Ein Script im Prototyp zeigt eingeladenen Testern ein Overlay, belohnt aktive Zeit, neue Screens und erreichte Ziele sofort mit Sats und nimmt Feedback auf, das an der Stelle in der App hängt. Fieldtest bündelt die Meldungen zu Findings, bewertet sie (optional mit Claude) und schlägt Lösungen vor. Ausgezahlt wird aus der Wallet des Owners: Ein Runner auf dessen Rechner zahlt per Nostr Wallet Connect und meldet den Beleg zurück. Fieldtest verwahrt kein Geld und keine Wallet-Zugänge.
 
-## Neues Projekt
+Gebaut aus `robinchoice/starter`: Bun, Hono, SvelteKit, Drizzle, Postgres. Gestaltung nach DESIGN.md, Farbband-Ausschnitt 3,20–3,85.
 
-1. Repo aus der Vorlage anlegen: `gh repo create robinchoice/<name> --template robinchoice/starter --private --clone`
-2. `APP_NAME` und `APP_BAND` in `packages/shared/src/index.ts` setzen. Welcher Ausschnitt aus dem Farbband passt, steht in DESIGN.md.
-3. Lokal starten:
-   ```sh
-   cp .env.example .env
-   docker compose up -d
-   bun install
-   bunx playwright install chromium   # einmalig, für den Browser-Test
-   bun run dev
-   ```
-   Web läuft auf http://localhost:5173, die API auf Port 3000. Ohne `SMTP_HOST` stehen die Login-Links im API-Log.
+## Lokal starten
+
+```sh
+cp .env.example .env
+docker compose up -d          # Postgres auf Port 5437
+bun install
+bunx playwright install chromium   # einmalig, für den Browser-Test
+bun run dev
+```
+
+Web läuft auf http://localhost:5173, die API auf Port 3000. Ohne `SMTP_HOST` stehen die Login-Links im API-Log.
+
+**Ausprobieren:** Nach dem Login „Mit dem Demo-Prototyp ausprobieren“ wählen. Das legt eine Runde für den Pebble-Demo-Prototyp unter `/demo/pebble.html` an. Den Einladungslink aus der Einrichtung in einem zweiten Fenster öffnen, testen, auf dem Backup-Screen dreimal auf „Continue“ tippen (der eingebaute Fehler) und das Finding im Dashboard bewerten.
 
 ## Aufbau
 
 | Pfad | Inhalt |
 |---|---|
-| `apps/api` | Hono-API unter `/api/v1`, Migrationen beim Start, `/api/health` prüft auch die DB |
-| `apps/web` | SvelteKit. Leitet `/api` an die API weiter, im Dev macht das der Vite-Proxy. Seiten hinter dem Login liegen unter `routes/(app)` |
+| `apps/api` | Hono-API unter `/api/v1`: Runden (`routes/rounds.ts`), Overlay (`routes/sdk.ts`), Runner (`routes/runner.ts`), geteilte Berichte (`routes/reports.ts`) |
+| `apps/api/src/lib` | Live-Belohnungen (`sessions.ts`), Claims und Reputation (`claims.ts`), Zahlungsbelege (`payments.ts`), KI-Bewertung (`evaluate.ts`) |
+| `apps/web` | Dashboard für Owner, geteilte Berichte unter `/r/<token>`, Demo-Prototyp unter `static/demo` |
+| `apps/runner` | Auszahlungs-Runner für den Rechner des Owners |
+| `packages/sdk` | Tester-Overlay, die API liefert es gebündelt unter `/api/v1/sdk/overlay.js` aus |
 | `packages/db` | Drizzle-Schema und Migrationen |
-| `packages/shared` | App-Name, zod-Schemas und Typen für API und Web |
-| `apps/mobile` | Flutter-App, siehe unten. Reine Web-Projekte löschen den Ordner und `.github/workflows/mobile.yml` |
+| `packages/shared` | Name, Farbband, zod-Schemas, Texte auf Deutsch und Englisch (`messages.ts`) |
 
-Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`. `test` umfasst die API-Tests und einen Browser-Test des Logins (Playwright, startet API und Web selbst oder nutzt die laufenden). Beide laufen gegen `DATABASE_URL` und legen nur Testkonten mit frischen Adressen an.
+Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`.
+
+## So läuft eine Runde
+
+1. Der Owner legt eine Runde an und bindet das Overlay einmal in den Prototyp ein: `<script src="https://<fieldtest>/api/v1/sdk/overlay.js" async></script>`. Ohne Einladungslink bleibt es unsichtbar. Prototypen ohne eigene URL pro Screen melden Screens und Ziele mit `Fieldtest.screen('Backup')` und `Fieldtest.goal('Back up your wallet')`.
+2. Tester öffnen den Einladungslink (`<prototyp>?fieldtest=<token>`), geben ihre Lightning-Adresse an und testen. Konten gibt es für Tester nicht.
+3. **Live-Belohnungen** vergibt die API, nicht das Overlay: aktive Minuten (höchstens so viele, wie seit dem Start vergangen sind), erste Besuche von Screens und die Ziele der Runde, alles bis zum Deckel pro Session. Sie sammeln sich in einem freigegebenen Claim, bis der Runner ihn abholt.
+4. **Meldungen** werden zu Findings. Mit `ANTHROPIC_API_KEY` bewertet Claude jede Meldung: Duplikat eines bekannten Findings, Schwere, und ob die aufgezeichnete Session sie stützt. Gestützte Probleme gelten als angenommen und zahlen aus. Ideen und nicht gestützte Meldungen warten auf den Owner. Ohne Key bewertet und führt der Owner von Hand zusammen.
+5. **Claims:** Die Erstmeldung bekommt den Betrag ihrer Schwere mal Reputation (neu 0,5×, ab 3 freigegebenen Sessions 1×, ab 10 1,25×), die nächsten fünf Tester eine Bestätigung. Bis zur Grenze `autoApprove` sind Claims sofort freigegeben, darüber entscheidet der Owner. Nach 48 Stunden geben sie sich selbst frei.
+6. **Runner:** holt freigegebene Claims, holt per LNURL-pay eine Rechnung von der Lightning-Adresse, zahlt sie über die Wallet des Owners und schickt Rechnung und Preimage zurück. Die API prüft, dass das Preimage zur Rechnung passt und die Rechnung auf den Betrag lautet.
+
+## Runner
+
+Der Owner erzeugt in der Einrichtung einen Runner-Schlüssel und startet den Runner dort, wo seine Wallet erreichbar ist:
+
+```sh
+FIELDTEST_URL=https://<fieldtest> \
+FIELDTEST_KEY=ft_… \
+NWC_URL="nostr+walletconnect://…" \
+bun run --filter @app/runner start
+```
+
+Optional: `MAX_PER_CLAIM` (Standard 10.000 Sats), `MAX_PER_TESTER_DAY` (50.000), `POLL_SECONDS` (10). Die harte Grenze ist das Budget der Wallet-Verbindung, das der Owner in seiner Wallet setzt (z. B. Alby Hub). Testmodus ohne Wallet: `DRY_RUN=1`, die API nimmt die erfundenen Belege nur mit `ALLOW_FAKE_PAYMENTS=1` an (steht in `.env.example`, nie in Produktion).
+
+Der Runner ruft nur öffentliche Hostnamen auf, damit eine präparierte Lightning-Adresse ihn nicht ins Netz des Owners lenken kann.
 
 ## Deploy auf Coolify
 
-VPS 1 baut nichts. Die CI baut bei jedem grünen Push auf `main` die Images `ghcr.io/<owner>/<repo>-web` und `-api` für arm64 (Tags `:<sha>` und `:latest`), Coolify zieht sie nur. Die GHCR-Packages bleiben privat. VPS 1 zieht sie mit dem vorhandenen Pull-Token `vps1-ghcr-pull`, pro Projekt ist dafür nichts einzurichten.
+Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`.
 
-1. Ressource aus dem GitHub-Repo im Projekt `pleasance-<name>` oder `privat-<name>`, Build Pack „Docker Compose“, Datei `docker-compose.prod.yml`.
-2. Domain nur beim Service `web` eintragen, mit Port: `https://<domain>:3000`.
-3. Variablen aus `.env.production.example` setzen. `IMAGE_PREFIX` und `IMAGE_TAG` setzt die CI.
-4. In GitHub die Secrets `COOLIFY_TOKEN` (Coolify-API-Token mit den Rechten `read`, `write` und `deploy`) und `COOLIFY_UUID` (UUID der Ressource) setzen. Ohne `COOLIFY_TOKEN` überspringt die CI den Deploy. Mit Token setzt sie `IMAGE_PREFIX` und `IMAGE_TAG`, schaltet das Auto-Deploy der Ressource aus, ersetzt den Build durch `docker compose pull`, startet mit `up -d --no-build --remove-orphans` und wartet, bis Coolify den Deploy abgeschlossen hat.
-5. GlitchTip: Projekt anlegen, DSN in `SENTRY_DSN` und `PUBLIC_SENTRY_DSN`.
-6. Uptime Kuma: HTTP-Monitor auf `https://<domain>/api/health`.
-7. Neue Software in `vps1/advisory-alarm` aufnehmen, siehe `infra.md`.
+## Bewusst offen
 
-## Mobile-App
-
-Flutter mit Riverpod und go_router, Karte mit flutter_map und OSM, Token in `flutter_secure_storage`, GlitchTip über `sentry_flutter`. Die App spricht dieselbe API wie das Web: Code per Mail anfordern (`POST /api/v1/auth/code`), Code gegen Session-Token tauschen (`/auth/code/verify`), danach Bearer-Token. Einen eigenen Server braucht sie nicht.
-
-### Neues Projekt
-
-1. Umbenennen, `<name>` ohne Bindestrich:
-   ```sh
-   cd apps/mobile
-   grep -rl org.pleasance.starter lib android ios | xargs sed -i 's/org\.pleasance\.starter/org.pleasance.<name>/g'
-   mv android/app/src/main/kotlin/org/pleasance/starter android/app/src/main/kotlin/org/pleasance/<name>
-   ```
-   Anzeigename in `lib/config.dart` (`appName`), `android/app/src/main/AndroidManifest.xml` (`android:label`) und `ios/Runner/Info.plist` (`CFBundleDisplayName`). Den Farbband-Ausschnitt wie im Web in `lib/config.dart` (`appBand`).
-2. Lokal starten, die API läuft dabei über `bun run dev`:
-   ```sh
-   cd apps/mobile
-   flutter run                                              # iOS-Simulator
-   flutter run --dart-define=API_URL=http://10.0.2.2:3000   # Android-Emulator
-   ```
-   Auf einem echten Gerät die LAN-IP des Laptops nehmen. Ohne `SMTP_HOST` steht der Code im API-Log.
-
-### Release
-
-`.github/workflows/mobile.yml` prüft jede Änderung an der App mit `flutter analyze` und `flutter test`. Auf `main` lädt die CI iOS zu TestFlight hoch und baut für Android ein signiertes AAB als Artefakt.
-
-- **GitHub-Variablen:** `API_URL` (`https://<domain>`, ohne werden beide Release-Jobs übersprungen), `SENTRY_DSN` (eigenes GlitchTip-Projekt für die App), `ASC_KEY_ID` und `ASC_ISSUER_ID`.
-- **GitHub-Secrets:** `ASC_KEY_P8` (App-Store-Connect-API-Key, base64), `IOS_DEV_CERTIFICATE` (festes „Apple Development“-Zertifikat als base64-PKCS12, läuft am 04.10.2027 ab), `IOS_DEV_CERTIFICATE_PASSWORD`, `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
-- Ohne `ASC_KEY_ID` wird der iOS-Job übersprungen, ohne `IOS_DEV_CERTIFICATE` bricht er ab. Ohne festes Zertifikat legt Xcode pro Lauf ein neues an, bis die Zertifikatsgrenze des Teams erreicht ist. Ohne Keystore signiert Android mit Debug-Keys (nur zum Testen).
-- Die App vorher in App Store Connect mit der Bundle-ID anlegen. Team-ID steht in `ios/ExportOptions.plist` und im Xcode-Projekt.
-- macOS-Minuten sind nur bei öffentlichen Repos kostenlos.
+- Das Overlay bringt seine Styles als `<style>` im Shadow DOM mit. Prototypen mit strenger CSP müssen `style-src 'unsafe-inline'` erlauben, sonst bleibt das Overlay ungestylt.
+- Der Runner läuft aus dem Repo, ein eigenes Image dafür baut die CI noch nicht.
+- Rechtlich: Fieldtest verwahrt nichts und überweist nicht selbst. Ob das Runner-Modell ohne MiCA-Erlaubnis auskommt, sollte die BaFin bestätigen (Fintech-Kontaktformular, Frage nach Erlaubnispflicht).

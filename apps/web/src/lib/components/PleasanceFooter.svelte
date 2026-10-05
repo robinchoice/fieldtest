@@ -1,14 +1,19 @@
 <script lang="ts">
   import { APP_BAND } from '@app/shared';
+  import { page } from '$app/state';
+  import { setLocale, t } from '$lib/i18n';
+
+  const other = $derived(page.data.locale === 'de' ? 'en' : 'de');
 </script>
 
 <footer>
-  <a href="https://pleasance.org">ein Werkzeug von <span class="wordmark" role="img" aria-label="Pleasance"></span></a>
+  <a href="https://pleasance.org">{t().madeBy} <span class="wordmark" role="img" aria-label="Pleasance"></span></a>
   <span class="band" aria-hidden="true"><span
       class="marker"
       style:left="{((APP_BAND.from - 1) / 6) * 100}%"
       style:width="{((APP_BAND.to - APP_BAND.from) / 6) * 100}%"
     ></span></span>
+  <button type="button" lang={other} onclick={() => setLocale(other)}>{t().otherLanguage}</button>
 </footer>
 
 <style>
@@ -40,6 +45,16 @@
     margin-left: auto;
     border-radius: 2px;
     background: linear-gradient(rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.6)), var(--spectrum);
+  }
+  button {
+    padding: 0.25rem 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
   }
   .marker {
     position: absolute;

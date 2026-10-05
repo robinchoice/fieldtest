@@ -1,6 +1,13 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
-declare global {
-  namespace App {}
-}
+import type { Locale } from '@app/shared';
 
-export {};
+declare global {
+  namespace App {
+    interface Locals {
+      locale: Locale;
+    }
+    interface PageData {
+      locale: Locale;
+    }
+  }
+}

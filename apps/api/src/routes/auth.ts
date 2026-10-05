@@ -10,6 +10,7 @@ import {
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
+import { t } from '../lib/i18n';
 import { sendLoginCodeEmail, sendMagicLinkEmail } from '../lib/mail';
 import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
 import { validJson } from '../lib/validate';
@@ -59,7 +60,7 @@ export const authRoutes = new Hono<AppEnv>()
         tokenHash: hashToken(token),
         expiresAt: new Date(Date.now() + 15 * MINUTE),
       });
-    await sendMagicLinkEmail(email, token, safeNextPath(next));
+    await sendMagicLinkEmail(email, token, safeNextPath(next), t(c));
     return c.json({ ok: true });
   })
 
@@ -79,7 +80,7 @@ export const authRoutes = new Hono<AppEnv>()
         ),
       )
       .returning({ email: magicLinks.email });
-    if (!link) return c.json({ error: 'Der Link ist abgelaufen oder wurde schon benutzt.' }, 400);
+    if (!link) return c.json({ error: t(c).linkExpired }, 400);
 
     const { user, token } = await startSession(db, link.email, SESSION_DAYS);
     setCookie(c, SESSION_COOKIE, token, {
@@ -106,7 +107,7 @@ export const authRoutes = new Hono<AppEnv>()
         codeHash: hashToken(code),
         expiresAt: new Date(Date.now() + 15 * MINUTE),
       });
-    await sendLoginCodeEmail(email, code);
+    await sendLoginCodeEmail(email, code, t(c));
     return c.json({ ok: true });
   })
 
@@ -131,14 +132,14 @@ export const authRoutes = new Hono<AppEnv>()
       )
       .returning({ id: loginCodes.id, codeHash: loginCodes.codeHash });
     const match = open.find((row) => row.codeHash === hashToken(code));
-    if (!match) return c.json({ error: 'Der Code stimmt nicht oder ist abgelaufen.' }, 400);
+    if (!match) return c.json({ error: t(c).codeWrong }, 400);
 
     const [used] = await db
       .update(loginCodes)
       .set({ usedAt: new Date() })
       .where(and(eq(loginCodes.id, match.id), isNull(loginCodes.usedAt)))
       .returning({ id: loginCodes.id });
-    if (!used) return c.json({ error: 'Der Code stimmt nicht oder ist abgelaufen.' }, 400);
+    if (!used) return c.json({ error: t(c).codeWrong }, 400);
 
     return c.json(await startSession(db, email, APP_SESSION_DAYS));
   })

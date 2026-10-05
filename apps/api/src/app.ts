@@ -3,8 +3,13 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
+import { t } from './lib/i18n';
 import { captureException } from './monitoring';
 import { authRoutes } from './routes/auth';
+import { reportRoutes } from './routes/reports';
+import { roundRoutes } from './routes/rounds';
+import { runnerRoutes } from './routes/runner';
+import { sdkRoutes } from './routes/sdk';
 import type { AppEnv } from './types';
 
 export function createApp(db: Database) {
@@ -20,7 +25,7 @@ export function createApp(db: Database) {
         if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
         console.error('Unhandled error:', err);
         captureException(err);
-        return c.json({ error: 'Interner Fehler' }, 500);
+        return c.json({ error: t(c).internalError }, 500);
       })
       // Public through the web proxy, so Uptime Kuma checks web, API and database in one go
       .get('/api/health', async (c) => {
@@ -29,5 +34,9 @@ export function createApp(db: Database) {
       })
       .basePath('/api/v1')
       .route('/auth', authRoutes)
+      .route('/reports', reportRoutes)
+      .route('/rounds', roundRoutes)
+      .route('/runner', runnerRoutes)
+      .route('/sdk', sdkRoutes)
   );
 }

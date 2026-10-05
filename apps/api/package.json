@@ -8,12 +8,14 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@app/db": "workspace:*",
     "@app/shared": "workspace:*",
     "@hono/zod-validator": "^0.9.1",
     "@sentry/bun": "^11.4.0",
     "drizzle-orm": "^0.45.3",
     "hono": "^4.13.12",
+    "light-bolt11-decoder": "^3.2.0",
     "nodemailer": "^10.0.13",
     "zod": "^4.6.5"
   },

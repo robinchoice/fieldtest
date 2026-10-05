@@ -9,7 +9,7 @@
   }: {
     value?: string;
     label: string;
-    type?: 'text' | 'email';
+    type?: 'text' | 'email' | 'url';
     placeholder?: string;
     error?: string;
     required?: boolean;

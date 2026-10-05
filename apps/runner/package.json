@@ -1,0 +1,14 @@
+{
+  "name": "@app/runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@getalby/sdk": "^8.0.3",
+    "light-bolt11-decoder": "^3.2.0"
+  }
+}

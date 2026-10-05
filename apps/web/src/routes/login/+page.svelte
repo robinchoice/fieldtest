@@ -6,6 +6,7 @@
   import { auth, checkAuth, sendMagicLink } from '$lib/auth.svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
+  import { t } from '$lib/i18n';
 
   // Page that sent us here, e.g. a link opened while logged out
   const next = safeNextPath(page.url.searchParams.get('next'));
@@ -35,15 +36,15 @@
 
 <main>
   <p class="brand">{APP_NAME}</p>
-  <h1>Einloggen</h1>
+  <h1>{t().logIn}</h1>
   {#if sent}
-    <p>Check deine E-Mails, der Login-Link ist unterwegs.</p>
-    <Button variant="secondary" onclick={() => (sent = false)}>Andere Adresse</Button>
+    <p>{t().linkSent}</p>
+    <Button variant="secondary" onclick={() => (sent = false)}>{t().otherAddress}</Button>
   {:else}
     <form onsubmit={submit}>
-      <p>Wir schicken dir einen Login-Link. Beim ersten Login legen wir dein Konto an.</p>
-      <Input type="email" label="E-Mail" placeholder="du@example.com" bind:value={email} required />
-      <Button type="submit" {loading}>Login-Link senden</Button>
+      <p>{t().linkIntro}</p>
+      <Input type="email" label={t().email} placeholder={t().emailPlaceholder} bind:value={email} required />
+      <Button type="submit" {loading}>{t().sendLink}</Button>
     </form>
   {/if}
 </main>

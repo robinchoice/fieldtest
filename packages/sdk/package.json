@@ -1,0 +1,8 @@
+{
+  "name": "@app/sdk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit"
+  }
+}

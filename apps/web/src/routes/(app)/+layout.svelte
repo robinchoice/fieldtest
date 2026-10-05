@@ -5,6 +5,7 @@
   import { page } from '$app/state';
   import { auth, checkAuth, logout } from '$lib/auth.svelte';
   import Button from '$lib/components/Button.svelte';
+  import { t } from '$lib/i18n';
 
   let { children } = $props();
   let ready = $state(false);
@@ -29,7 +30,7 @@
   <header>
     <a href="/dashboard" class="brand">{APP_NAME}</a>
     <span class="user">{auth.user.name}</span>
-    <Button variant="secondary" onclick={handleLogout}>Abmelden</Button>
+    <Button variant="secondary" onclick={handleLogout}>{t().logOut}</Button>
   </header>
   <main>
     {@render children()}
@@ -57,7 +58,7 @@
     color: var(--muted);
   }
   main {
-    max-width: 960px;
+    max-width: 1280px;
     margin: 0 auto;
     padding: 2rem 1.5rem;
   }
