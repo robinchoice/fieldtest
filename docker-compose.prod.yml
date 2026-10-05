@@ -1,0 +1,50 @@
+# Coolify resource (build pack "Docker Compose"). Only web gets a domain,
+# it forwards /api to the API internally. The CI builds the images and sets
+# IMAGE_PREFIX and IMAGE_TAG on every deploy, Coolify only pulls them.
+services:
+  web:
+    image: ${IMAGE_PREFIX:?IMAGE_PREFIX is required}-web:${IMAGE_TAG:?IMAGE_TAG is required}
+    environment:
+      - API_INTERNAL_URL=http://api:3000
+      - ORIGIN=${APP_URL}
+      - PUBLIC_SENTRY_DSN=${PUBLIC_SENTRY_DSN:-}
+      - PUBLIC_SENTRY_ENVIRONMENT=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    image: ${IMAGE_PREFIX:?IMAGE_PREFIX is required}-api:${IMAGE_TAG:?IMAGE_TAG is required}
+    environment:
+      - DATABASE_URL=postgresql://app:${POSTGRES_PASSWORD}@postgres:5432/app
+      - APP_URL=${APP_URL}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:

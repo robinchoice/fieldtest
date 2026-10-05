@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Runs of one branch queue up, so an older deploy never overwrites a newer one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://app:app@localhost:5432/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Fails on high and critical advisories, lower ones only show up in the log
+      - run: bun audit --audit-level=high
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run check
+      - run: bun run test
+      - run: bun run build
+
+  # Images are built here, not on VPS 1: building there ran it out of memory.
+  build-and-push:
+    needs: check
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.service }}
+          push: true
+          platforms: linux/arm64
+          provenance: false
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      COOLIFY_UUID: ${{ secrets.COOLIFY_UUID }}
+      COOLIFY_API: https://coolify.pleasance.org/api/v1
+    steps:
+      - name: Deploy images to Coolify
+        run: |
+          set -euo pipefail
+          if [ -z "$COOLIFY_TOKEN" ]; then
+            echo "No COOLIFY_TOKEN secret yet, skipping deploy"
+            exit 0
+          fi
+          : "${COOLIFY_UUID:?COOLIFY_UUID is required}"
+
+          jq -n --arg prefix "ghcr.io/${GITHUB_REPOSITORY,,}" --arg sha "$GITHUB_SHA" \
+            '{data: [
+              {key: "IMAGE_PREFIX", value: $prefix, is_buildtime: true, is_runtime: true, is_preview: false},
+              {key: "IMAGE_TAG", value: $sha, is_buildtime: true, is_runtime: true, is_preview: false}]}' |
+            curl --fail-with-body --silent --show-error --output /dev/null \
+              -X PATCH -H "Authorization: Bearer $COOLIFY_TOKEN" \
+              -H 'Content-Type: application/json' --data-binary @- \
+              "$COOLIFY_API/applications/$COOLIFY_UUID/envs/bulk"
+
+          jq -n --arg sha "$GITHUB_SHA" --arg uuid "$COOLIFY_UUID" \
+            '{git_commit_sha: $sha, is_auto_deploy_enabled: false,
+              docker_compose_custom_build_command: "docker compose pull",
+              docker_compose_custom_start_command: ("docker compose --project-name " + $uuid + " up -d --no-build --remove-orphans")}' |
+            curl --fail-with-body --silent --show-error --output /dev/null \
+              -X PATCH -H "Authorization: Bearer $COOLIFY_TOKEN" \
+              -H 'Content-Type: application/json' --data-binary @- \
+              "$COOLIFY_API/applications/$COOLIFY_UUID"
+
+          deployment=$(curl --fail-with-body --silent --show-error -X POST \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_API/deploy?uuid=$COOLIFY_UUID&force=true" |
+            jq -er '.deployments[0].deployment_uuid')
+
+          for _ in {1..60}; do
+            status=$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $COOLIFY_TOKEN" \
+              "$COOLIFY_API/deployments/$deployment" | jq -er '.status')
+            echo "Deployment $deployment: $status"
+            case "$status" in
+              finished) exit 0 ;;
+              failed|cancelled-by-user) exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo 'Deployment timed out.' >&2
+          exit 1

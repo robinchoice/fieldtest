@@ -1,0 +1,24 @@
+# Weekly update PRs, one per ecosystem. The CI checks them like any other PR.
+# The cooldown skips releases younger than a week, which keeps freshly
+# hijacked packages out.
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    groups:
+      all: { patterns: ['*'] }
+
+  - package-ecosystem: pub
+    directory: /apps/mobile
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    groups:
+      all: { patterns: ['*'] }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      all: { patterns: ['*'] }

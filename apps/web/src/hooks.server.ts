@@ -1,0 +1,53 @@
+import dns from 'node:dns';
+import type { Handle, HandleServerError } from '@sveltejs/kit';
+import { captureException } from './monitoring.server';
+
+// Docker's embedded DNS doesn't answer AAAA queries, which otherwise stalls
+// the AAAA-before-A lookup order until it times out.
+dns.setDefaultResultOrder('ipv4first');
+
+// In production this server forwards /api to the API service, so browser and
+// API share one origin and the session cookie needs no CORS. In dev Vite's
+// proxy does the same.
+const API_ORIGIN = process.env.API_INTERNAL_URL || 'http://api:3000';
+
+// The CSP comes from svelte.config.js. Browsers ignore HSTS over plain HTTP,
+// so it is harmless in dev.
+const SECURITY_HEADERS = {
+  'strict-transport-security': 'max-age=31536000',
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+};
+
+export const handle: Handle = async ({ event, resolve }) => {
+  const response = event.url.pathname.startsWith('/api/')
+    ? await proxyToApi(event.request, event.url)
+    : await resolve(event);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, value);
+  return response;
+};
+
+async function proxyToApi(request: Request, url: URL) {
+  const headers = new Headers(request.headers);
+  headers.delete('host');
+
+  const res = await fetch(`${API_ORIGIN}${url.pathname}${url.search}`, {
+    method: request.method,
+    headers,
+    body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+    // @ts-expect-error — Bun supports duplex
+    duplex: 'half',
+  });
+
+  // fetch() already decompresses the body, so forwarding the upstream's
+  // content-encoding/content-length would mismatch the actual bytes sent.
+  const responseHeaders = new Headers(res.headers);
+  responseHeaders.delete('content-encoding');
+  responseHeaders.delete('content-length');
+
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: responseHeaders });
+}
+
+export const handleError: HandleServerError = ({ error }) => {
+  captureException(error);
+};
