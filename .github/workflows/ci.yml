@@ -34,7 +34,9 @@ jobs:
       - run: bun install --frozen-lockfile
       # Fails on high and critical advisories, lower ones only show up in the log
       - run: bun audit --audit-level=high
+      # From apps/web, so bunx takes the Playwright version the tests use and not the latest from npm
       - run: bunx playwright install --with-deps chromium
+        working-directory: apps/web
       - run: bun run check
       - run: bun run test
       - run: bun run build
