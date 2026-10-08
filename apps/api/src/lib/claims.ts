@@ -14,7 +14,7 @@ export const scaled = (rewards: Rewards, sats: number) => Math.round((sats * rew
 // Live rewards of a session collect in one approved claim until the runner
 // picks it up, so testers get a few payments instead of one per screen.
 export async function addLiveReward(
-  db: Database,
+  db: Pick<Database, 'select' | 'update' | 'insert'>,
   session: { id: string; roundId: string; testerId: string },
   sats: number,
 ) {
@@ -22,7 +22,20 @@ export async function addLiveReward(
   const [grown] = await db
     .update(claims)
     .set({ baseSats: sql`${claims.baseSats} + ${sats}`, amountSats: sql`${claims.amountSats} + ${sats}` })
-    .where(and(eq(claims.sessionId, session.id), eq(claims.kind, 'live'), eq(claims.status, 'approved')))
+    .where(
+      and(
+        eq(claims.status, 'approved'),
+        eq(
+          claims.id,
+          db
+            .select({ id: claims.id })
+            .from(claims)
+            .where(and(eq(claims.sessionId, session.id), eq(claims.kind, 'live'), eq(claims.status, 'approved')))
+            .orderBy(asc(claims.createdAt), asc(claims.id))
+            .limit(1),
+        ),
+      ),
+    )
     .returning({ id: claims.id });
   if (grown) return;
   await db.insert(claims).values({

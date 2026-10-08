@@ -153,34 +153,38 @@ export const sdkRoutes = new Hono<AppEnv>()
     const { type, text, anchor } = c.req.valid('json');
     const db = c.get('db');
 
-    const [{ last }] = (await db
-      .select({ last: max(findings.number) })
-      .from(findings)
-      .where(eq(findings.roundId, round.id))) as [{ last: number | null }];
-    const firstLine = text.split('\n')[0]!;
-    const [finding] = await db
-      .insert(findings)
-      .values({
-        roundId: round.id,
-        number: (last ?? 0) + 1,
-        severity: type === 'idea' ? 'idea' : null,
-        title: firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine,
-        screen: anchor.screen,
-      })
-      .returning({ id: findings.id });
-    const [report] = await db
-      .insert(feedback)
-      .values({
-        sessionId: session.id,
-        findingId: finding!.id,
-        type,
-        text,
-        anchorLabel: anchor.label,
-        anchorScreen: anchor.screen,
-        auto: anchor.auto,
-      })
-      .returning({ id: feedback.id });
-    evaluateLater(db, report!.id);
+    const report = await db.transaction(async (tx) => {
+      await tx.select({ id: rounds.id }).from(rounds).where(eq(rounds.id, round.id)).for('no key update');
+      const [{ last }] = (await tx
+        .select({ last: max(findings.number) })
+        .from(findings)
+        .where(eq(findings.roundId, round.id))) as [{ last: number | null }];
+      const firstLine = text.split('\n')[0]!;
+      const [finding] = await tx
+        .insert(findings)
+        .values({
+          roundId: round.id,
+          number: (last ?? 0) + 1,
+          severity: type === 'idea' ? 'idea' : null,
+          title: firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine,
+          screen: anchor.screen,
+        })
+        .returning({ id: findings.id });
+      const [report] = await tx
+        .insert(feedback)
+        .values({
+          sessionId: session.id,
+          findingId: finding!.id,
+          type,
+          text,
+          anchorLabel: anchor.label,
+          anchorScreen: anchor.screen,
+          auto: anchor.auto,
+        })
+        .returning({ id: feedback.id });
+      return report!;
+    });
+    evaluateLater(db, report.id);
     await db.update(testSessions).set({ lastSeenAt: new Date() }).where(eq(testSessions.id, session.id));
     return c.json(await sessionState(db, session, round));
   })

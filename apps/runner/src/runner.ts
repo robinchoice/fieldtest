@@ -66,21 +66,24 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
     await api('POST', '/status', { budgetSats, host: hostname(), version: VERSION });
 
     const { claims } = await api<{ claims: Claim[] }>('GET', '/claims');
-    for (const claim of claims) {
-      const today = (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats;
+    for (let claim of claims) {
+      let today = (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats;
       if (claim.amountSats > config.maxPerClaim || today > config.maxPerTesterDay) {
         log(
           `[runner] Skipping ${claim.amountSats} sats to ${claim.lightningAddress}: above MAX_PER_CLAIM or MAX_PER_TESTER_DAY`,
         );
         continue;
       }
-      if (
-        !(await api('POST', `/claims/${claim.id}/lock`).then(
-          () => true,
-          () => false,
-        ))
-      )
+      const locked = await api<{ claim: { amountSats: number } }>('POST', `/claims/${claim.id}/lock`).catch(() => null);
+      if (!locked) continue;
+      claim = { ...claim, amountSats: locked.claim.amountSats };
+      today = (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats;
+      if (claim.amountSats > config.maxPerClaim || today > config.maxPerTesterDay) {
+        const error = 'Locked amount exceeds MAX_PER_CLAIM or MAX_PER_TESTER_DAY';
+        log(`[runner] Skipping ${claim.amountSats} sats to ${claim.lightningAddress}: ${error}`);
+        await api('POST', `/claims/${claim.id}/failed`, { error });
         continue;
+      }
 
       let proof: Proof;
       try {

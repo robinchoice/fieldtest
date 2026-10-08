@@ -18,57 +18,65 @@ const secondsSince = (start: Date, at = new Date()) => Math.max(0, Math.floor((a
 // owner's goals, all within the live cap. Friction and errors only go to the log.
 export async function recordActivity(
   db: Database,
-  session: Session,
+  initialSession: Session,
   round: Round,
   input: z.infer<typeof sdkEventsSchema>,
 ) {
-  const { rewards } = round;
-  const elapsed = secondsSince(session.createdAt);
-  const open = !session.endedAt && elapsed < MAX_SESSION_SECONDS;
-  let live = session.liveSats;
-  const award = (sats: number) => {
-    const got = open ? Math.max(0, Math.min(scaled(rewards, sats), rewards.cap - live)) : 0;
-    live += got;
-    return got;
-  };
-  const rows: { kind: string; label: string; screen: string; sats: number }[] = [];
+  await db.transaction(async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(testSessions)
+      .where(eq(testSessions.id, initialSession.id))
+      .for('no key update');
+    if (!session) return;
+    const { rewards } = round;
+    const elapsed = secondsSince(session.createdAt);
+    const open = !session.endedAt && elapsed < MAX_SESSION_SECONDS;
+    let live = session.liveSats;
+    const award = (sats: number) => {
+      const got = open ? Math.max(0, Math.min(scaled(rewards, sats), rewards.cap - live)) : 0;
+      live += got;
+      return got;
+    };
+    const rows: { kind: string; label: string; screen: string; sats: number }[] = [];
 
-  // Active time can't run ahead of the clock, however often the overlay reports
-  let active = session.activeSeconds;
-  if (input.active && open) {
-    const next = Math.min(active + WINDOW_SECONDS, elapsed);
-    if (Math.floor(next / 60) > Math.floor(active / 60))
-      rows.push({ kind: 'minute', label: '', screen: '', sats: award(rewards.minute) });
-    active = next;
-  }
-
-  const known = await db
-    .select({ kind: events.kind, label: events.label, screen: events.screen })
-    .from(events)
-    .where(and(eq(events.sessionId, session.id), inArray(events.kind, ['screen', 'goal'])));
-  const screens = new Set(known.filter((e) => e.kind === 'screen').map((e) => e.screen));
-  const goals = new Set(known.filter((e) => e.kind === 'goal').map((e) => e.label));
-
-  for (const event of input.events) {
-    if (event.kind === 'screen') {
-      if (!event.screen || screens.has(event.screen)) continue;
-      screens.add(event.screen);
-      rows.push({ ...event, sats: award(rewards.screen) });
-    } else if (event.kind === 'goal') {
-      if (!round.goals.includes(event.label) || goals.has(event.label)) continue;
-      goals.add(event.label);
-      rows.push({ ...event, sats: award(rewards.goal) });
-    } else {
-      rows.push({ ...event, sats: 0 });
+    // Active time can't run ahead of the clock, however often the overlay reports
+    let active = session.activeSeconds;
+    if (input.active && open) {
+      const next = Math.min(active + WINDOW_SECONDS, elapsed);
+      if (Math.floor(next / 60) > Math.floor(active / 60))
+        rows.push({ kind: 'minute', label: '', screen: '', sats: award(rewards.minute) });
+      active = next;
     }
-  }
 
-  if (rows.length) await db.insert(events).values(rows.map((row) => ({ ...row, sessionId: session.id })));
-  await db
-    .update(testSessions)
-    .set({ activeSeconds: active, liveSats: live, lastSeenAt: new Date() })
-    .where(eq(testSessions.id, session.id));
-  await addLiveReward(db, session, live - session.liveSats);
+    const known = await tx
+      .select({ kind: events.kind, label: events.label, screen: events.screen })
+      .from(events)
+      .where(and(eq(events.sessionId, session.id), inArray(events.kind, ['screen', 'goal'])));
+    const screens = new Set(known.filter((e) => e.kind === 'screen').map((e) => e.screen));
+    const goals = new Set(known.filter((e) => e.kind === 'goal').map((e) => e.label));
+
+    for (const event of input.events) {
+      if (event.kind === 'screen') {
+        if (!event.screen || screens.has(event.screen)) continue;
+        screens.add(event.screen);
+        rows.push({ ...event, sats: award(rewards.screen) });
+      } else if (event.kind === 'goal') {
+        if (!round.goals.includes(event.label) || goals.has(event.label)) continue;
+        goals.add(event.label);
+        rows.push({ ...event, sats: award(rewards.goal) });
+      } else {
+        rows.push({ ...event, sats: 0 });
+      }
+    }
+
+    if (rows.length) await tx.insert(events).values(rows.map((row) => ({ ...row, sessionId: session.id })));
+    await tx
+      .update(testSessions)
+      .set({ activeSeconds: active, liveSats: live, lastSeenAt: new Date() })
+      .where(eq(testSessions.id, session.id));
+    await addLiveReward(tx, session, live - session.liveSats);
+  });
 }
 
 // What the overlay shows: earnings, goals and the log of what was recorded

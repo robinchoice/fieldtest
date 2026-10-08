@@ -26,6 +26,7 @@ export async function invoiceFor(address: string, sats: number, comment: string,
   const params = (await (
     await fetcher(`https://${domain}/.well-known/lnurlp/${encodeURIComponent(user)}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
+      redirect: 'error',
     })
   ).json()) as PayParams;
   if (params.tag !== 'payRequest' || !params.callback)
@@ -41,7 +42,9 @@ export async function invoiceFor(address: string, sats: number, comment: string,
   callback.searchParams.set('amount', String(msat));
   if (comment && params.commentAllowed) callback.searchParams.set('comment', comment.slice(0, params.commentAllowed));
 
-  const answer = (await (await fetcher(callback, { signal: AbortSignal.timeout(TIMEOUT_MS) })).json()) as {
+  const answer = (await (
+    await fetcher(callback, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'error' })
+  ).json()) as {
     pr?: string;
     reason?: string;
   };

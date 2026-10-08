@@ -96,16 +96,18 @@ export async function evaluateFeedback(db: Database, feedbackId: string, ask: As
 
   const seconds = (at: Date) => Math.round((at.getTime() - report.sessionStart.getTime()) / 1000);
   const f = report.feedback;
+  const escapePrompt = (value: string) =>
+    value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   const prompt = [
-    `Product: ${round.product}, round "${round.name}". Goals: ${round.goals.join('; ') || 'none'}.`,
-    `Existing findings:\n${known.map((k) => `F-${k.number} [${k.severity ?? 'unrated'}] ${k.title} (screen ${k.screen}) ${k.summary}`).join('\n') || 'none'}`,
+    `Product: ${escapePrompt(round.product)}, round "${escapePrompt(round.name)}". Goals: ${round.goals.map(escapePrompt).join('; ') || 'none'}.`,
+    `Existing findings:\n${known.map((k) => `F-${k.number} [${k.severity ?? 'unrated'}] ${escapePrompt(k.title)} (screen ${escapePrompt(k.screen)}) ${escapePrompt(k.summary)}`).join('\n') || 'none'}`,
     `Recorded events before the report (seconds since session start):\n${
       recorded
         .filter((e) => e.at <= f.createdAt)
-        .map((e) => `${seconds(e.at)} ${e.kind} ${e.screen} ${e.label}`)
+        .map((e) => `${seconds(e.at)} ${e.kind} ${escapePrompt(e.screen)} ${escapePrompt(e.label)}`)
         .join('\n') || 'none'
     }`,
-    `Report at ${seconds(f.createdAt)} s, type ${f.type}, about "${f.anchorLabel}" on ${f.anchorScreen}${f.auto ? `, noticed by the overlay: ${f.auto}` : ''}:\n<report>${f.text}</report>`,
+    `Report at ${seconds(f.createdAt)} s, type ${f.type}, about "${escapePrompt(f.anchorLabel)}" on ${escapePrompt(f.anchorScreen)}${f.auto ? `, noticed by the overlay: ${escapePrompt(f.auto)}` : ''}:\n<report>${escapePrompt(f.text)}</report>`,
   ].join('\n\n');
 
   const result = await ask(prompt);
