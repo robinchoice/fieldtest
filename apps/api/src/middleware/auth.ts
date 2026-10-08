@@ -19,10 +19,13 @@ export function hashToken(token: string) {
 
 // Native clients such as mobile apps have no cookie jar and send the
 // session token as a bearer token instead.
-export function sessionToken(c: Context) {
+export function bearerToken(c: Context) {
   const header = c.req.header('authorization');
-  const bearer = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : undefined;
-  return getCookie(c, SESSION_COOKIE) ?? (bearer || undefined);
+  return header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() || undefined : undefined;
+}
+
+export function sessionToken(c: Context) {
+  return getCookie(c, SESSION_COOKIE) ?? bearerToken(c);
 }
 
 export async function currentUser(c: Context<AppEnv>) {

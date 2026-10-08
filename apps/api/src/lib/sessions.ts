@@ -1,8 +1,8 @@
 import { claims, type Database, events, feedback, type rounds, testSessions } from '@app/db';
-import type { sdkEventsSchema } from '@app/shared';
+import { scaled, type sdkEventsSchema } from '@app/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { z } from 'zod';
-import { addLiveReward, scaled } from './claims';
+import { addLiveReward } from './claims';
 
 // The overlay reports one window of 10 seconds per call
 const WINDOW_SECONDS = 10;
@@ -22,7 +22,7 @@ export async function recordActivity(
   round: Round,
   input: z.infer<typeof sdkEventsSchema>,
 ) {
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [session] = await tx
       .select()
       .from(testSessions)
@@ -71,11 +71,13 @@ export async function recordActivity(
     }
 
     if (rows.length) await tx.insert(events).values(rows.map((row) => ({ ...row, sessionId: session.id })));
-    await tx
+    const [updated] = await tx
       .update(testSessions)
       .set({ activeSeconds: active, liveSats: live, lastSeenAt: new Date() })
-      .where(eq(testSessions.id, session.id));
+      .where(eq(testSessions.id, session.id))
+      .returning();
     await addLiveReward(tx, session, live - session.liveSats);
+    return updated;
   });
 }
 

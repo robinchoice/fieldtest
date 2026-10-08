@@ -5,7 +5,7 @@ import { SEVERITIES } from '@app/shared';
 import { and, asc, eq, gt, inArray, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { captureException } from '../monitoring';
-import { settleFinding } from './claims';
+import { mergeFinding, settleFinding } from './claims';
 
 // Evaluates every new report with Claude: is it a known finding, how severe is
 // it, and does it match what the overlay recorded? Only runs with ANTHROPIC_API_KEY.
@@ -67,6 +67,7 @@ export async function evaluateFeedback(db: Database, feedbackId: string, ask: As
     db.select().from(rounds).where(eq(rounds.id, report.roundId)),
     db
       .select({
+        id: findings.id,
         number: findings.number,
         title: findings.title,
         screen: findings.screen,
@@ -115,13 +116,7 @@ export async function evaluateFeedback(db: Database, feedbackId: string, ask: As
 
   const duplicate = result.duplicateOf === null ? undefined : known.find((k) => k.number === result.duplicateOf);
   if (duplicate) {
-    const [target] = await db
-      .select({ id: findings.id })
-      .from(findings)
-      .where(and(eq(findings.roundId, round.id), eq(findings.number, duplicate.number)));
-    await db.update(feedback).set({ findingId: target!.id }).where(eq(feedback.findingId, own));
-    await db.delete(findings).where(eq(findings.id, own));
-    await settleFinding(db, target!.id);
+    await mergeFinding(db, own, duplicate.id);
     return;
   }
 

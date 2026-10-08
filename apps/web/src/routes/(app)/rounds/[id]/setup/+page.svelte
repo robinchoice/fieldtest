@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Rewards } from '@app/shared';
+  import { type Rewards, rewardsSchema, scaled } from '@app/shared';
   import { page } from '$app/state';
   import { api } from '$lib/api';
   import Button from '$lib/components/Button.svelte';
@@ -33,14 +33,13 @@
   const snippet = $derived(`<script src="${origin}/api/v1/sdk/overlay.js" async></${'script'}>`);
   const apiExample = `Fieldtest.screen('Backup');\nFieldtest.goal('Back up your wallet');`;
 
-  const fields = ['minute', 'screen', 'goal', 'cap', 'cosmetic', 'minor', 'major', 'blocker', 'idea', 'confirm', 'autoApprove', 'scale'] as const;
+  const fields = rewardsSchema.keyof().options;
 
   // 20 active minutes, about eight new screens, all goals, then a minor and a major finding
   const estimate = $derived.by(() => {
     if (!rewards) return null;
-    const scale = (n: number) => Math.round((n * rewards!.scale) / 100);
-    const live = Math.min(scale(rewards.minute * 20 + rewards.screen * 8 + rewards.goal * (detail?.round.goals.length ?? 0)), rewards.cap);
-    const session = live + scale(rewards.minor + rewards.major);
+    const live = Math.min(scaled(rewards, rewards.minute * 20 + rewards.screen * 8 + rewards.goal * (detail?.round.goals.length ?? 0)), rewards.cap);
+    const session = live + scaled(rewards, rewards.minor + rewards.major);
     return { session, round: session * 20 };
   });
 

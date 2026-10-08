@@ -7,13 +7,12 @@ import { approveDueClaims } from '../lib/claims';
 import { t } from '../lib/i18n';
 import { checkPayment } from '../lib/payments';
 import { validJson } from '../lib/validate';
-import { generateToken, hashToken, requireAuth } from '../middleware/auth';
+import { bearerToken, generateToken, hashToken, requireAuth } from '../middleware/auth';
 import type { AppEnv } from '../types';
 
 // The runner sends its key as a bearer token. Only the hash is stored.
 const requireRunner = createMiddleware<AppEnv>(async (c, next) => {
-  const header = c.req.header('authorization');
-  const key = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  const key = bearerToken(c);
   const [runner] = key
     ? await c
         .get('db')

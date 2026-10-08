@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SEVERITIES, type Severity } from '@app/shared';
+  import { type ClaimStatus, type FindingStatus, SEVERITIES, type Severity } from '@app/shared';
   import { page } from '$app/state';
   import { api } from '$lib/api';
   import Button from '$lib/components/Button.svelte';
@@ -11,8 +11,8 @@
   type Finding = {
     id: string;
     number: number;
-    severity: string | null;
-    status: 'new' | 'accepted' | 'exported' | 'dismissed';
+    severity: Severity | null;
+    status: FindingStatus;
     title: string;
     screen: string;
     summary: string;
@@ -26,7 +26,7 @@
     finding: Finding;
     reports: { id: string; type: 'bug' | 'confusing' | 'idea'; text: string; label: string; screen: string; auto: string | null; tester: string; seconds: number }[];
     evidence: { kind: 'screen' | 'goal' | 'friction' | 'error'; label: string; screen: string; seconds: number }[];
-    payouts: { id: string; kind: 'live' | 'finding' | 'confirm'; amount: number; status: 'review' | 'approved' | 'paying' | 'paid' | 'rejected'; tester: string }[];
+    payouts: { id: string; kind: 'live' | 'finding' | 'confirm'; amount: number; status: ClaimStatus; tester: string }[];
   };
 
   const id = $derived(page.params.id!);
@@ -92,7 +92,7 @@
   const exportText = $derived.by(() => {
     if (!detail || !exporting) return '';
     const f = detail.finding;
-    const severity = f.severity ? t().severityNames[f.severity as Severity] : t().unrated;
+    const severity = f.severity ? t().severityNames[f.severity] : t().unrated;
     return exporting === 'agent'
       ? t().agentTask(f.title, summary || detail.reports[0]?.text || '', fix, steps(detail))
       : t().issueBody(f.title, severity, f.sessions, summary || detail.reports[0]?.text || '', fix);

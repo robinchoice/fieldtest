@@ -1,5 +1,5 @@
 import { claims, type Database, feedback, findings, rounds, testers, testSessions } from '@app/db';
-import { type Rewards, type Severity, severityReward } from '@app/shared';
+import { type Rewards, type Severity, scaled, severityReward } from '@app/shared';
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 
 const HOUR = 60 * 60 * 1000;
@@ -8,8 +8,6 @@ const REVIEW_HOURS = 48;
 // Testers who report a known finding again get a small confirmation reward, but only the first few
 const MAX_CONFIRMATIONS = 5;
 const LOWER = { blocker: 'major', major: 'minor', minor: 'cosmetic' } as const;
-
-export const scaled = (rewards: Rewards, sats: number) => Math.round((sats * rewards.scale) / 100);
 
 // Live rewards of a session collect in one approved claim until the runner
 // picks it up, so testers get a few payments instead of one per screen.
@@ -137,6 +135,18 @@ export async function settleFinding(db: Database, findingId: string) {
     });
     if (state.status === 'approved') await countApprovedSession(db, report.sessionId);
   }
+}
+
+export async function mergeFinding(db: Database, sourceId: string, targetId: string) {
+  await db.update(feedback).set({ findingId: targetId }).where(eq(feedback.findingId, sourceId));
+  // Payouts already on their way stay with the testers and count as settled for the target
+  await db
+    .update(claims)
+    .set({ findingId: targetId })
+    .where(and(eq(claims.findingId, sourceId), inArray(claims.status, ['paying', 'paid'])));
+  await db.delete(claims).where(eq(claims.findingId, sourceId));
+  await db.delete(findings).where(eq(findings.id, sourceId));
+  await settleFinding(db, targetId);
 }
 
 // Claims in review whose waiting time is over count as approved

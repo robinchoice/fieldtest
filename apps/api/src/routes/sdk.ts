@@ -8,17 +8,16 @@ import { HTTPException } from 'hono/http-exception';
 import { evaluateLater } from '../lib/evaluate';
 import { t } from '../lib/i18n';
 import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
+import { runnerOnline } from '../lib/runners';
 import { recordActivity, sessionState } from '../lib/sessions';
 import { validJson } from '../lib/validate';
-import { generateToken, hashToken } from '../middleware/auth';
+import { bearerToken, generateToken, hashToken } from '../middleware/auth';
 import type { AppEnv } from '../types';
 
 const MINUTE = 60 * 1000;
 const startsPerIp = rateLimit('sdk-starts-per-ip', 20, 60 * MINUTE);
 const reportsPerSession = rateLimit('sdk-reports-per-session', 40, MINUTE);
 const feedbackPerSession = rateLimit('sdk-feedback-per-session', 30, 60 * MINUTE);
-// A runner that polled within this time counts as online
-export const RUNNER_ONLINE_MS = 2 * MINUTE;
 
 const OVERLAY_ENTRY = path.join(import.meta.dir, '../../../../packages/sdk/src/index.ts');
 let overlay: Promise<string> | undefined;
@@ -35,8 +34,7 @@ function overlayScript() {
 }
 
 async function currentSession(c: Context<AppEnv>) {
-  const header = c.req.header('authorization');
-  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  const token = bearerToken(c);
   const [row] = token
     ? await c
         .get('db')
@@ -81,7 +79,7 @@ async function invitation(c: Context<AppEnv>, invite: string) {
     paid: waits.length,
     payouts: payouts.length,
     medianSeconds: waits.length ? Math.round(waits[Math.floor(waits.length / 2)]!) : null,
-    runnerOnline: !!runner?.lastSeenAt && Date.now() - runner.lastSeenAt.getTime() < RUNNER_ONLINE_MS,
+    runnerOnline: runnerOnline(runner),
     budgetSats: runner?.budgetSats ?? null,
   };
 }
@@ -140,8 +138,7 @@ export const sdkRoutes = new Hono<AppEnv>()
     const { session, round } = await currentSession(c);
     if (!(await reportsPerSession.hit(c, session.id))) return tooManyRequests(c);
     const db = c.get('db');
-    await recordActivity(db, session, round, c.req.valid('json'));
-    const [fresh] = await db.select().from(testSessions).where(eq(testSessions.id, session.id));
+    const fresh = await recordActivity(db, session, round, c.req.valid('json'));
     return c.json(await sessionState(db, fresh!, round));
   })
 

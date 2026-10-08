@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ClaimStatus } from '@app/shared';
   import { page } from '$app/state';
   import { api } from '$lib/api';
   import Button from '$lib/components/Button.svelte';
@@ -9,7 +10,7 @@
   type Claim = {
     id: string;
     kind: 'live' | 'finding' | 'confirm';
-    status: 'review' | 'approved' | 'paying' | 'paid' | 'rejected';
+    status: ClaimStatus;
     base: number;
     multiplier: number;
     amount: number;

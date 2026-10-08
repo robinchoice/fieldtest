@@ -187,5 +187,7 @@ export const runnerStatusSchema = z.object({
 
 // What the first reporter of a finding earns, before reputation
 export function severityReward(rewards: Rewards, severity: Severity): number {
-  return Math.round((rewards[severity] * rewards.scale) / 100);
+  return scaled(rewards, rewards[severity]);
 }
+
+export const scaled = (rewards: Rewards, sats: number) => Math.round((sats * rewards.scale) / 100);
