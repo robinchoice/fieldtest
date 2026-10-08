@@ -1,6 +1,7 @@
 import dns from 'node:dns';
 import { pickLocale } from '@app/shared';
 import type { Handle, HandleServerError } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { captureException } from './monitoring.server';
 
 // Docker's embedded DNS doesn't answer AAAA queries, which otherwise stalls
@@ -9,8 +10,8 @@ dns.setDefaultResultOrder('ipv4first');
 
 // In production this server forwards /api to the API service, so browser and
 // API share one origin and the session cookie needs no CORS. In dev Vite's
-// proxy does the same.
-const API_ORIGIN = process.env.API_INTERNAL_URL || 'http://api:3000';
+// proxy does the same for the browser, fetches in server loads land here.
+const API_ORIGIN = process.env.API_INTERNAL_URL || (dev ? 'http://localhost:3000' : 'http://api:3000');
 
 // The CSP comes from svelte.config.js. Browsers ignore HSTS over plain HTTP,
 // so it is harmless in dev.

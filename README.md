@@ -30,7 +30,7 @@ Web läuft auf http://localhost:5173, die API auf Port 3000. Ohne `SMTP_HOST` st
 | `packages/db` | Drizzle-Schema und Migrationen |
 | `packages/shared` | Name, Farbband, zod-Schemas, Texte auf Deutsch und Englisch (`messages.ts`) |
 
-Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`.
+Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`, in `apps/web` außerdem `og-image` (Vorschaubild für geteilte Links, DESIGN.md).
 
 ## So läuft eine Runde
 

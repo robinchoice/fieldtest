@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "playwright test"
+    "test": "playwright test",
+    "og-image": "bun og-image.ts"
   },
   "devDependencies": {
     "@app/shared": "workspace:*",

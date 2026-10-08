@@ -1,26 +1,16 @@
 <script lang="ts">
-  import { page } from '$app/state';
-  import { api } from '$lib/api';
-  import Report, { type ReportData } from '$lib/components/Report.svelte';
+  import Report from '$lib/components/Report.svelte';
   import { t } from '$lib/i18n';
 
-  let report = $state<ReportData | null>(null);
-  let missing = $state(false);
-
-  $effect(() => {
-    api.get<ReportData>(`/reports/${page.params.token}`, true).then(
-      (r) => (report = r),
-      () => (missing = true),
-    );
-  });
+  let { data } = $props();
 </script>
 
 <main>
-  {#if report}
+  {#if data.report}
     <p class="kicker">{t().sharedReport}</p>
-    <h1>{t().reportTitle(report.product, report.name)}</h1>
-    <Report {report} />
-  {:else if missing}
+    <h1>{t().reportTitle(data.report.product, data.report.name)}</h1>
+    <Report report={data.report} />
+  {:else}
     <h1>{t().notFound}</h1>
   {/if}
 </main>

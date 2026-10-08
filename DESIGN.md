@@ -102,6 +102,10 @@ Hell: Paper `#F4F4F1`, Ink `#17171A` für Text und Linien, Muted `#5E5E66`. Dunk
 
 Jedes Produkt hat in der Fußzeile den Absender „ein Werkzeug von“ und dahinter die Pleasance-Wortmarke in Textfarbe. Fertig gebaut ist das als `PleasanceFooter`, im Web in `$lib/components`, in der App in `lib/core/brand.dart`. Im Web verlinkt der Absender auf https://pleasance.org. Rechts daneben steht das Farbband als 3-px-Linie, abgedunkelt (dunkel: 55 % Schwarz darüber, hell: 60 % Weiß). Der eigene Ausschnitt ist darauf als 9 px hohe Pille im Produktverlauf markiert.
 
+## Vorschaubild
+
+Geteilte Links zeigen in WhatsApp, Signal und Co. ein Vorschaubild, 1200 × 630 px, eines pro Sprache. Dunkler Grund (`#0E0D12`), links die Kachel, rechts der Produktname in der Display-Schrift, darunter eine 4-px-Linie im Produktverlauf und die Tagline in Muted. Unten links steht der Absender wie in der Fußzeile, mit Wortmarke und Farbband. `bun run og-image` in `apps/web` rendert die Bilder aus `APP_NAME`, `APP_BAND`, `tagline` und der Kachel in `static/favicon.svg`. Sie liegen als `static/og-image-<sprache>.png`. Bringt eine Seite eigene Bilder mit, etwa ein Cover, nimmt sie das eigene statt des Vorschaubilds.
+
 ## Pleasance als Dach
 
 Das Dach ist neutral und trägt alle Farben. Die 4-px-Linie unter dem Kopf zeigt das ganze Farbband. Bereiche mit eigener Farbe:

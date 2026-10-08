@@ -8,6 +8,8 @@ declare global {
     }
     interface PageData {
       locale: Locale;
+      // Link preview of a public page, see +layout.svelte. image is an absolute URL.
+      meta?: { title?: string; description?: string; image?: string };
     }
   }
 }

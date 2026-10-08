@@ -1,13 +1,32 @@
 <script lang="ts">
   import { APP_BAND, APP_NAME, bandColor, bandGradient, DEEP, GLOW } from '@app/shared';
+  import { page } from '$app/state';
   import PleasanceFooter from '$lib/components/PleasanceFooter.svelte';
   import Toasts from '$lib/components/Toasts.svelte';
+  import { t } from '$lib/i18n';
 
   let { children } = $props();
+
+  // Link previews. Public pages override them with meta in their server load,
+  // pages with ssr = false don't get any (link crawlers run no JavaScript).
+  const meta = $derived({ title: APP_NAME, description: t().tagline, image: '', ...page.data.meta });
 </script>
 
 <svelte:head>
   <title>{APP_NAME}</title>
+  <meta property="og:site_name" content={APP_NAME} />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={meta.title} />
+  <meta property="og:description" content={meta.description} />
+  {#if meta.image}
+    <meta property="og:image" content={meta.image} />
+  {:else}
+    <meta property="og:image" content="{page.url.origin}/og-image-{page.data.locale}.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="{APP_NAME}: {t().tagline}" />
+  {/if}
+  <meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
 <div
