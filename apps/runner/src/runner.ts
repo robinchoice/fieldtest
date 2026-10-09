@@ -29,6 +29,7 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
   let day = new Date().toDateString();
   // Paid, but Fieldtest didn't get the proof yet. Retried on every tick, so nothing gets paid twice.
   const unreported = new Map<string, Proof>();
+  const unreleased = new Map<string, string>();
 
   async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetcher(`${config.url}/api/v1/runner${path}`, {
@@ -37,7 +38,8 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = (await res.json().catch(() => ({}))) as T & { error?: string };
-    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+    if (!res.ok)
+      throw Object.assign(new Error(data.error || `${res.status} ${res.statusText}`), { status: res.status });
     return data;
   }
 
@@ -61,6 +63,14 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
         () => {},
       );
     }
+    for (const [id, error] of unreleased) {
+      await api('POST', `/claims/${id}/failed`, { error }).then(
+        () => unreleased.delete(id),
+        (err) => {
+          if (err.status === 409) unreleased.delete(id);
+        },
+      );
+    }
 
     const budgetSats = wallet ? await wallet.budgetSats().catch(() => null) : null;
     await api('POST', '/status', { budgetSats, host: hostname(), version: VERSION });
@@ -79,9 +89,9 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
       claim = { ...claim, amountSats: locked.claim.amountSats };
       today = (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats;
       if (claim.amountSats > config.maxPerClaim || today > config.maxPerTesterDay) {
-        const error = 'Locked amount exceeds MAX_PER_CLAIM or MAX_PER_TESTER_DAY';
+        const error = 'lockedAmountExceedsLimits';
         log(`[runner] Skipping ${claim.amountSats} sats to ${claim.lightningAddress}: ${error}`);
-        await api('POST', `/claims/${claim.id}/failed`, { error });
+        await api('POST', `/claims/${claim.id}/failed`, { error }).catch(() => unreleased.set(claim.id, error));
         continue;
       }
 
@@ -91,7 +101,7 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
       } catch (err) {
         const error = (err as Error).message.slice(0, 500);
         log(`[runner] Payment of ${claim.amountSats} sats to ${claim.lightningAddress} failed: ${error}`);
-        await api('POST', `/claims/${claim.id}/failed`, { error }).catch(() => {});
+        await api('POST', `/claims/${claim.id}/failed`, { error }).catch(() => unreleased.set(claim.id, error));
         continue;
       }
       paidToday.set(claim.lightningAddress, today);

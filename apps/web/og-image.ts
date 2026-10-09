@@ -39,8 +39,8 @@ const html = (locale: Locale) => `<!doctype html>
   footer { display: flex; gap: 14px; align-items: flex-end; color: #9a98a3; font: 650 24px/1 Display; font-stretch: 80%; }
   .signature { display: flex; flex-direction: column; gap: 8px; }
   .wordmark { width: 180px; height: 20px; background: #f2f0ea; mask: url(${dataUrl('pleasance-wordmark.svg', 'image/svg+xml')}) left center / contain no-repeat; }
-  .band { position: relative; height: 3px; border-radius: 2px; background: linear-gradient(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.55)), linear-gradient(90deg, ${GLOW.join(', ')}); }
-  .marker { position: absolute; top: -2px; min-width: 10px; height: 7px; border-radius: 4px; background: ${bandGradient(APP_BAND, GLOW)};
+  .band { position: relative; height: 2px; background: linear-gradient(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.55)), linear-gradient(90deg, ${GLOW.join(', ')}); }
+  .marker { position: absolute; top: 0; min-width: 10px; height: 4px; background: ${bandGradient(APP_BAND, GLOW)};
     left: ${((APP_BAND.from - 1) / 6) * 100}%; width: ${((APP_BAND.to - APP_BAND.from) / 6) * 100}%; }
 </style>
 <main>

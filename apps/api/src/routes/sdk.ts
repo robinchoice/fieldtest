@@ -139,7 +139,8 @@ export const sdkRoutes = new Hono<AppEnv>()
     if (!(await reportsPerSession.hit(c, session.id))) return tooManyRequests(c);
     const db = c.get('db');
     const fresh = await recordActivity(db, session, round, c.req.valid('json'));
-    return c.json(await sessionState(db, fresh!, round));
+    if (!fresh) return c.json({ error: t(c).sessionInvalid }, 401);
+    return c.json(await sessionState(db, fresh, round));
   })
 
   // Every report starts as its own finding. The evaluation (lib/evaluate.ts) or the owner merges duplicates.

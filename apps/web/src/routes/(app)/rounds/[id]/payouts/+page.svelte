@@ -77,7 +77,7 @@
           {#each claims as c (c.id)}
             <tr>
               <td>{c.tester}</td>
-              <td class="wide">{what(c)}{#if c.lastError}<small class="error">{c.lastError}</small>{/if}</td>
+              <td class="wide">{what(c)}{#if c.lastError}<small class="error">{c.lastError === 'lockedAmountExceedsLimits' ? t().lockedAmountExceedsLimits : c.lastError}</small>{/if}</td>
               <td class="num">{sats(c.amount)}</td>
               <td><span class="claim {c.status}">{t().claimStatuses[c.status]}</span></td>
               <td class="wide proof">{c.proof ?? ''}</td>

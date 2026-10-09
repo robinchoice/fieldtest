@@ -175,5 +175,49 @@ test('the runner releases a claim that grew beyond its limits before lock', asyn
   await runner.tick();
   expect(payments).toBe(0);
   expect(calls.some((url) => url.startsWith('GET https://getalby.com'))).toBe(false);
-  expect(failure).toEqual({ error: 'Locked amount exceeds MAX_PER_CLAIM or MAX_PER_TESTER_DAY' });
+  expect(failure).toEqual({ error: 'lockedAmountExceedsLimits' });
 });
+
+for (const status of [200, 409]) {
+  test(`failed releases retry without blocking other claims and stop after ${status}`, async () => {
+    let polls = 0;
+    let releases = 0;
+    let paid = 0;
+    const { fetcher } = network({
+      'POST https://ft.example/api/v1/runner/status': () => ({ ok: true }),
+      'GET https://ft.example/api/v1/runner/claims': () => ({
+        claims:
+          polls++ === 0
+            ? [
+                { id: 'a', kind: 'live', amountSats: 30, lightningAddress: 'mara@getalby.com', product: 'Pebble' },
+                { id: 'b', kind: 'live', amountSats: 20, lightningAddress: 'mara@getalby.com', product: 'Pebble' },
+              ]
+            : [],
+      }),
+      'POST https://ft.example/api/v1/runner/claims/a/lock': () => ({ claim: { id: 'a', amountSats: 60 } }),
+      'POST https://ft.example/api/v1/runner/claims/a/failed': () => {
+        if (++releases === 1) throw new Error('Connection lost');
+        return Response.json({ ok: status === 200 }, { status });
+      },
+      'POST https://ft.example/api/v1/runner/claims/b/lock': () => ({ claim: { id: 'b', amountSats: 20 } }),
+      'POST https://ft.example/api/v1/runner/claims/b/paid': () => {
+        paid++;
+        return { ok: true };
+      },
+    });
+    const runner = createRunner(
+      { url: 'https://ft.example', key: 'ft_x', maxPerClaim: 50, maxPerTesterDay: 100, dryRun: true },
+      null,
+      fetcher,
+      () => {},
+    );
+    await runner.tick();
+    expect(paid).toBe(1);
+    expect(releases).toBe(1);
+    await runner.tick();
+    expect(releases).toBe(2);
+    await runner.tick();
+    expect(releases).toBe(2);
+    expect(paid).toBe(1);
+  });
+}
