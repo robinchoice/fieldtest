@@ -31,6 +31,10 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
   const unreported = new Map<string, Proof>();
   const unreleased = new Map<string, string>();
 
+  const overLimit = (claim: Claim) =>
+    claim.amountSats > config.maxPerClaim ||
+    (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats > config.maxPerTesterDay;
+
   async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetcher(`${config.url}/api/v1/runner${path}`, {
       method,
@@ -76,25 +80,26 @@ export function createRunner(config: Config, wallet: Wallet | null, fetcher: typ
     await api('POST', '/status', { budgetSats, host: hostname(), version: VERSION });
 
     const { claims } = await api<{ claims: Claim[] }>('GET', '/claims');
-    for (let claim of claims) {
-      let today = (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats;
-      if (claim.amountSats > config.maxPerClaim || today > config.maxPerTesterDay) {
+    for (const listedClaim of claims) {
+      if (overLimit(listedClaim)) {
         log(
-          `[runner] Skipping ${claim.amountSats} sats to ${claim.lightningAddress}: above MAX_PER_CLAIM or MAX_PER_TESTER_DAY`,
+          `[runner] Skipping ${listedClaim.amountSats} sats to ${listedClaim.lightningAddress}: above MAX_PER_CLAIM or MAX_PER_TESTER_DAY`,
         );
         continue;
       }
-      const locked = await api<{ claim: { amountSats: number } }>('POST', `/claims/${claim.id}/lock`).catch(() => null);
+      const locked = await api<{ claim: { amountSats: number } }>('POST', `/claims/${listedClaim.id}/lock`).catch(
+        () => null,
+      );
       if (!locked) continue;
-      claim = { ...claim, amountSats: locked.claim.amountSats };
-      today = (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats;
-      if (claim.amountSats > config.maxPerClaim || today > config.maxPerTesterDay) {
+      const claim = { ...listedClaim, amountSats: locked.claim.amountSats };
+      if (overLimit(claim)) {
         const error = 'lockedAmountExceedsLimits';
         log(`[runner] Skipping ${claim.amountSats} sats to ${claim.lightningAddress}: ${error}`);
         await api('POST', `/claims/${claim.id}/failed`, { error }).catch(() => unreleased.set(claim.id, error));
         continue;
       }
 
+      const today = (paidToday.get(claim.lightningAddress) ?? 0) + claim.amountSats;
       let proof: Proof;
       try {
         proof = await pay(claim);

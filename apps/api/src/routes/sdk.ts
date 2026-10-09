@@ -138,7 +138,7 @@ export const sdkRoutes = new Hono<AppEnv>()
     const { session, round } = await currentSession(c);
     if (!(await reportsPerSession.hit(c, session.id))) return tooManyRequests(c);
     const db = c.get('db');
-    const fresh = await recordActivity(db, session, round, c.req.valid('json'));
+    const fresh = await recordActivity(db, session.id, round, c.req.valid('json'));
     if (!fresh) return c.json({ error: t(c).sessionInvalid }, 401);
     return c.json(await sessionState(db, fresh, round));
   })

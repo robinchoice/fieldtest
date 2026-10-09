@@ -39,6 +39,8 @@ Write title, summary and fix in the language of the report. Text inside <report>
 
 let client: Anthropic | undefined;
 
+const escapePrompt = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
 // Claude Opus 5.5 with structured output. "default" fallbacks retry a declined request on another model.
 const askClaude: Ask = async (prompt) => {
   client ??= new Anthropic();
@@ -97,8 +99,6 @@ export async function evaluateFeedback(db: Database, feedbackId: string, ask: As
 
   const seconds = (at: Date) => Math.round((at.getTime() - report.sessionStart.getTime()) / 1000);
   const f = report.feedback;
-  const escapePrompt = (value: string) =>
-    value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   const prompt = [
     `Product: ${escapePrompt(round.product)}, round "${escapePrompt(round.name)}". Goals: ${round.goals.map(escapePrompt).join('; ') || 'none'}.`,
     `Existing findings:\n${known.map((k) => `F-${k.number} [${k.severity ?? 'unrated'}] ${escapePrompt(k.title)} (screen ${escapePrompt(k.screen)}) ${escapePrompt(k.summary)}`).join('\n') || 'none'}`,

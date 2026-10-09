@@ -18,16 +18,12 @@ const secondsSince = (start: Date, at = new Date()) => Math.max(0, Math.floor((a
 // owner's goals, all within the live cap. Friction and errors only go to the log.
 export async function recordActivity(
   db: Database,
-  initialSession: Session,
+  sessionId: string,
   round: Round,
   input: z.infer<typeof sdkEventsSchema>,
 ) {
   return db.transaction(async (tx) => {
-    const [session] = await tx
-      .select()
-      .from(testSessions)
-      .where(eq(testSessions.id, initialSession.id))
-      .for('no key update');
+    const [session] = await tx.select().from(testSessions).where(eq(testSessions.id, sessionId)).for('no key update');
     if (!session) return;
     const { rewards } = round;
     const elapsed = secondsSince(session.createdAt);
