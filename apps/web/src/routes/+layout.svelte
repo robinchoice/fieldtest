@@ -67,7 +67,12 @@
     --border: rgb(23 23 26 / 0.16);
     --text: #17171a;
     --muted: #5e5e66;
-    --error: #b42318;
+    --needs: #8f5a0c;
+    --needs-bg: #f4b44c;
+    --new: #1d6a44;
+    --new-bg: #6ccf8e;
+    --error: #b3262d;
+    --error-bg: #f2545b;
     --radius: 8px;
     --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
     --spectrum: linear-gradient(90deg, #f2545b, #fb8c45, #f2c14e, #6ccf8e, #46bfe0, #8e92f8, #c39bf2);

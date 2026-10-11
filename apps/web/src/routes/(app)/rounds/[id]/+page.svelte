@@ -387,7 +387,7 @@
   }
   .timeline .friction,
   .timeline .error {
-    color: #b3262d;
+    color: var(--error);
     font-weight: 600;
   }
   .texts label {
@@ -450,10 +450,10 @@
     font-size: 0.8rem;
   }
   .claim.review {
-    background: #f6ebc8;
+    background: var(--needs-bg);
   }
   .claim.paid {
-    background: #dcebdf;
+    background: var(--new-bg);
   }
   @media (max-width: 860px) {
     .split {

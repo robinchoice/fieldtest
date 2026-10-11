@@ -174,13 +174,10 @@
     white-space: nowrap;
   }
   .claim.review {
-    background: #f6ebc8;
+    background: var(--needs-bg);
   }
   .claim.paid {
-    background: #dcebdf;
-  }
-  .claim.paying {
-    background: #dde8ef;
+    background: var(--new-bg);
   }
   @media (max-width: 700px) {
     .wide {

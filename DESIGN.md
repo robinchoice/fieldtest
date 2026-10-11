@@ -12,6 +12,11 @@ gradient:
 neutral:
   light: { paper: "#F4F4F1", surface: "#FFFFFF", ink: "#17171A", muted: "#5E5E66", hairline: "rgba(23, 23, 26, 0.16)" }
   dark: { bg: "#0E0D12", raised: "#16151B", text: "#F2F0EA", muted: "#9A98A3", line: "rgba(255, 255, 255, 0.07)" }
+signal:
+  # glow für dunklen Grund und gefüllte Zähler, deep für Text und Linien auf hellem Grund
+  needs: { glow: "#F4B44C", deep: "#8F5A0C" }
+  new: { glow: "#6CCF8E", deep: "#1D6A44" }
+  error: { glow: "#F2545B", deep: "#B3262D" }
 tile:
   grid: 100
   radius: 24
@@ -98,6 +103,25 @@ Bricolage Grotesque, selbst gehostet (OFL): im Web unter `apps/web/static/fonts`
 
 Hell: Paper `#F4F4F1`, Ink `#17171A` für Text und Linien, Muted `#5E5E66`. Dunkel: `#0E0D12` als Grund, `#F2F0EA` für Text. Ein Produkt darf den dunklen Grund leicht zu seinem Ton hin färben. Ob ein Produkt hell oder dunkel ist, hängt davon ab, wie es genutzt wird.
 
+## Signalfarben
+
+Die Produktfarbe ist Identität, kein Status. Zustände, die man nebeneinander auseinanderhalten muss, tragen feste Signalfarben. Sie sind in allen Produkten gleich, egal welchen Ausschnitt das Produkt hat, und kommen selbst aus dem Farbband.
+
+| Signal | Bedeutung | Stufe | glow | deep |
+|---|---|---|---|---|
+| Du bist dran | Frage, Freigabe, Eingabe nötig | 2,75 | `#F4B44C` | `#8F5A0C` |
+| Neu | neues Ergebnis, ungelesen | 4 | `#6CCF8E` | `#1D6A44` |
+| Fehler | fehlgeschlagen | 1 | `#F2545B` | `#B3262D` |
+
+- Läuft hat keine eigene Farbe: Der Spinner läuft im Produktverlauf, Zahl und Text bleiben Muted.
+- Gefüllte Zähler und Statuspunkte gibt es nur in Signalfarben oder neutral, nie in der Produktfarbe. Die Schrift darauf ist `#17171A`.
+- Auf dunklem Grund glow. Auf hellem Grund deep für Text, Linien und Ränder, gefüllte Zähler bleiben glow.
+- Liegt der Ausschnitt eines Produkts auf einer Signalfarbe, trennt die Form: Signale erscheinen als Zähler, Punkt oder Randlinie, die Produktfarbe nie so.
+- Akzente, Auswahl, Banner und Markierungen bleiben in der Produktfarbe.
+- Neue Signale nur, wenn sie sich sonst nebeneinander verwechseln lassen.
+
+In Fieldtest liegen sie als `--needs`, `--new`, `--error` (deep) und `--needs-bg`, `--new-bg`, `--error-bg` (glow) im Web-Layout. Claims: „Wartet auf dich“ ist Du bist dran, „Bezahlt“ ist Neu, alle anderen bleiben neutral. Ein verbundener Runner hat einen Punkt in `--new`.
+
 ## Absender
 
 Jedes Produkt hat in der Fußzeile den Absender „ein Werkzeug von“ und dahinter die Pleasance-Wortmarke in Textfarbe. Fertig gebaut ist das als `PleasanceFooter`, im Web in `$lib/components`, in der App in `lib/core/brand.dart`. Im Web verlinkt der Absender auf https://pleasance.org. Rechts daneben steht das Farbband als 3-px-Linie, abgedunkelt (dunkel: 55 % Schwarz darüber, hell: 60 % Weiß). Der eigene Ausschnitt ist darauf als 9 px hohe Pille im Produktverlauf markiert.
@@ -120,5 +144,6 @@ Für pleasance.org kommt der Umbau erst nach einer eigenen Mockup-Runde. Bis dah
 
 - Keine Kacheln, deren ganze Fläche der Verlauf ist
 - Keine weiße Schrift auf Verläufen
+- Keine Statuszähler in der Produktfarbe
 - Keine esoterische Symbolik
 - Keine Schriften oder Tracker von Dritten beim Seitenaufruf

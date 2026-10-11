@@ -86,7 +86,7 @@
     background: var(--muted);
   }
   .runner.online::before {
-    background: #1d6a44;
+    background: var(--new);
   }
   nav {
     display: flex;
