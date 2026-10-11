@@ -45,6 +45,7 @@ const otherCode = (code: string) => (code === '000000' ? '000001' : '000000');
 test('health checks the database', async () => {
   const res = await app.request('/api/health');
   expect(res.status).toBe(200);
+  expect(await body(res)).toMatchObject({ status: 'ok', revision: expect.any(String) });
 });
 
 test('magic link logs in, creates the account and logs out', async () => {

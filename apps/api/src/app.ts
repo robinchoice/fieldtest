@@ -27,10 +27,11 @@ export function createApp(db: Database) {
         captureException(err);
         return c.json({ error: t(c).internalError }, 500);
       })
-      // Public through the web proxy, so Uptime Kuma checks web, API and database in one go
+      // Public through the web proxy, so Uptime Kuma checks web, API and database in one go.
+      // The CI compares revision with the deployed commit.
       .get('/api/health', async (c) => {
         await db.execute(sql`select 1`);
-        return c.json({ status: 'ok' });
+        return c.json({ status: 'ok', revision: process.env.APP_VERSION || 'dev' });
       })
       .basePath('/api/v1')
       .route('/auth', authRoutes)

@@ -38,6 +38,8 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: app
+    # Keeps one database from starving the other apps on the server
+    mem_limit: ${POSTGRES_MEMORY:-512m}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

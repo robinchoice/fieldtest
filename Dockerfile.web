@@ -21,7 +21,7 @@ COPY --from=build /app/apps/web/build build
 ENV NODE_ENV=production PORT=3000
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD bun -e "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+  CMD bun -e "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
 # The base image ships the unprivileged user bun
 USER bun
 CMD ["bun", "build/index.js"]

@@ -4,6 +4,11 @@ import nodemailer from 'nodemailer';
 const port = Number(process.env.SMTP_PORT || 587);
 
 // Without SMTP_HOST mails go to the log, so local dev needs no mail account.
+// In production the log would hand out login links, so the boot aborts.
+if (!process.env.SMTP_HOST && process.env.NODE_ENV === 'production') {
+  throw new Error('SMTP_HOST is required in production, otherwise login links would end up in the log');
+}
+
 const transport = process.env.SMTP_HOST
   ? nodemailer.createTransport({
       host: process.env.SMTP_HOST,
