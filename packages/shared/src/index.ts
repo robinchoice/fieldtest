@@ -14,6 +14,8 @@ export type User = {
   id: string;
   email: string;
   name: string;
+  // In ADMIN_EMAILS, may invite testers
+  admin: boolean;
 };
 
 // Custom error messages are keys of messages.ts, the API translates them.
@@ -30,6 +32,8 @@ export const verifySchema = z.object({
 });
 
 export const loginCodeSchema = z.object({ email });
+
+export const inviteSchema = z.object({ email });
 
 export const verifyCodeSchema = z.object({
   email,

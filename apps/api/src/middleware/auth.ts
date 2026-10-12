@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
 import { t } from '../lib/i18n';
+import { isAdmin } from '../lib/signup';
 import type { AppEnv } from '../types';
 
 export const SESSION_COOKIE = 'session';
@@ -67,12 +68,17 @@ export async function currentUser(c: Context<AppEnv>) {
       .where(eq(sessions.id, row.sessionId));
     if (getCookie(c, SESSION_COOKIE)) setSessionCookie(c, token);
   }
-  return { id: row.id, email: row.email, name: row.name };
+  return { id: row.id, email: row.email, name: row.name, admin: isAdmin(row.email) };
 }
 
 export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: t(c).notLoggedIn }, 401);
   c.set('user', user);
+  await next();
+});
+
+export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
+  if (!c.get('user').admin) return c.json({ error: t(c).adminOnly }, 403);
   await next();
 });

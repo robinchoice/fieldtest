@@ -25,6 +25,9 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - EMAIL_FROM=${EMAIL_FROM:-}
+      - SIGNUP_ALLOWLIST=${SIGNUP_ALLOWLIST:-}
+      - SIGNUP_OPEN=${SIGNUP_OPEN:-}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:

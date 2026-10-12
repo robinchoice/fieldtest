@@ -50,8 +50,8 @@ jobs:
         run: bunx playwright install-deps chromium
         working-directory: apps/web
       - run: bun run check
+      # Builds the web app and tests the build
       - run: bun run test
-      - run: bun run build
 
   # Images are built here, not on VPS 1: building there ran it out of memory.
   # One job for both images: every job is billed in whole minutes.

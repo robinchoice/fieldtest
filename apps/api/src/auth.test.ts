@@ -13,6 +13,9 @@ const log = spyOn(console, 'log');
 beforeAll(() => migrateDb(process.env.DATABASE_URL!));
 afterAll(() => db.$client.end());
 
+// Most tests sign up fresh addresses, the closed case has its own test
+process.env.SIGNUP_OPEN = 'true';
+
 const freshEmail = () => `test-${crypto.randomUUID()}@example.com`;
 
 // Rate limits live in the database, so each run counts against its own address
@@ -32,14 +35,18 @@ async function body(res: Response | Promise<Response>): Promise<any> {
 }
 
 // Without SMTP_HOST the login mail lands in the log
+function lastMail() {
+  return log.mock.calls.map((args) => String(args[0])).findLast((line) => line.startsWith('[mail]'));
+}
+
+const mailCount = () => log.mock.calls.filter((args) => String(args[0]).startsWith('[mail]')).length;
+
 function lastMailedToken() {
-  const mail = log.mock.calls.map((args) => String(args[0])).findLast((line) => line.startsWith('[mail]'));
-  return mail?.match(/token=([0-9a-f]+)/)?.[1];
+  return lastMail()?.match(/token=([0-9a-f]+)/)?.[1];
 }
 
 function lastMailedCode() {
-  const mail = log.mock.calls.map((args) => String(args[0])).findLast((line) => line.startsWith('[mail]'));
-  return mail?.match(/Dein Code: (\d{6})/)?.[1];
+  return lastMail()?.match(/Dein Code: (\d{6})/)?.[1];
 }
 
 const otherCode = (code: string) => (code === '000000' ? '000001' : '000000');
@@ -130,6 +137,78 @@ test('a code stops working after five wrong tries', async () => {
   const code = lastMailedCode()!;
   for (let i = 0; i < 5; i++) await post('/auth/code/verify', { email, code: otherCode(code) });
   expect((await post('/auth/code/verify', { email, code })).status).toBe(400);
+});
+
+test('closed sign-up mails only existing accounts and the allowlist', async () => {
+  const allowed = freshEmail();
+  const [existing] = await db.insert(users).values({ email: freshEmail(), name: 'Lena' }).returning();
+  delete process.env.SIGNUP_OPEN;
+  process.env.SIGNUP_ALLOWLIST = ` ${allowed.toUpperCase()} , someone@example.com`;
+  try {
+    const mails = mailCount();
+    const stranger = freshEmail();
+    const link = await post('/auth/magic-link', { email: stranger });
+    expect(link.status).toBe(403);
+    expect((await body(link)).error).toBe(
+      'Die Registrierung ist noch geschlossen. Für diese Adresse gibt es noch kein Konto.',
+    );
+    expect((await post('/auth/code', { email: stranger })).status).toBe(403);
+    expect(mailCount()).toBe(mails);
+
+    expect((await post('/auth/code', { email: existing!.email })).status).toBe(200);
+    expect((await post('/auth/magic-link', { email: allowed })).status).toBe(200);
+    expect((await body(post('/auth/verify', { token: lastMailedToken() }))).user.email).toBe(allowed);
+
+    // login-link still works, Savor's test account needs no allowlist entry
+    const run = Bun.spawnSync(['bun', 'src/login-link.ts', stranger], {
+      env: { ...process.env, APP_URL: 'https://app.test' },
+    });
+    const token = new URL(run.stdout.toString().trim()).searchParams.get('token');
+    expect((await body(post('/auth/verify', { token }))).user.email).toBe(stranger);
+  } finally {
+    process.env.SIGNUP_OPEN = 'true';
+    delete process.env.SIGNUP_ALLOWLIST;
+  }
+});
+
+async function sessionFor(email: string) {
+  const [user] = await db.insert(users).values({ email, name: 'Robin' }).returning({ id: users.id });
+  const token = generateToken();
+  await db
+    .insert(sessions)
+    .values({ userId: user!.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60_000) });
+  return { cookie: `session=${token}` };
+}
+
+test('admins invite testers past the closed sign-up, others get 403', async () => {
+  const admin = freshEmail();
+  const asAdmin = await sessionFor(admin);
+  const asUser = await sessionFor(freshEmail());
+  delete process.env.SIGNUP_OPEN;
+  process.env.ADMIN_EMAILS = `someone@example.com, ${admin.toUpperCase()}`;
+  try {
+    const me = await app.request('/api/v1/auth/me', { headers: asAdmin });
+    expect((await body(me)).user.admin).toBe(true);
+
+    const tester = freshEmail();
+    expect((await post('/auth/invite', { email: tester })).status).toBe(401);
+    const denied = await post('/auth/invite', { email: tester }, asUser);
+    expect(denied.status).toBe(403);
+    expect((await body(denied)).error).toBe('Nur für Admins');
+    expect(await db.select().from(users).where(eq(users.email, tester))).toEqual([]);
+
+    expect((await post('/auth/invite', { email: tester }, asAdmin)).status).toBe(200);
+    expect(lastMail()).toStartWith(`[mail] To ${tester}:`);
+    const verify = await body(post('/auth/verify', { token: lastMailedToken() }));
+    expect(verify.user).toMatchObject({ email: tester, admin: false });
+
+    // From now on the tester logs in like any existing account
+    expect((await post('/auth/magic-link', { email: tester })).status).toBe(200);
+    expect(process.env.SIGNUP_OPEN).toBeUndefined();
+  } finally {
+    process.env.SIGNUP_OPEN = 'true';
+    delete process.env.ADMIN_EMAILS;
+  }
 });
 
 test('login-link prints a magic link that logs in', async () => {

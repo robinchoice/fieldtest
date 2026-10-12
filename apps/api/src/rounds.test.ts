@@ -44,6 +44,9 @@ async function login() {
   return { cookie: `session=${res.headers.get('set-cookie')!.match(/session=([0-9a-f]+)/)![1]}` };
 }
 
+// Owners sign up with fresh addresses, auth.test.ts covers the closed sign-up
+process.env.SIGNUP_OPEN = 'true';
+
 const tester = () => `tester${crypto.randomUUID().slice(0, 8)}@getalby.com`;
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 

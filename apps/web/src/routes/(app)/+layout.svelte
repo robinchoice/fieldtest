@@ -30,6 +30,9 @@
   <header>
     <a href="/dashboard" class="brand">{APP_NAME}</a>
     <span class="user">{auth.user.name}</span>
+    {#if auth.user.admin}
+      <Button variant="secondary" href="/invite">{t().inviteTester}</Button>
+    {/if}
     <Button variant="secondary" onclick={handleLogout}>{t().logOut}</Button>
   </header>
   <main>

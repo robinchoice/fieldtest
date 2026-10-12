@@ -26,3 +26,7 @@ export async function logout() {
 export async function updateName(name: string) {
   auth.user = (await api.patch<{ user: User }>('/auth/me', { name })).user;
 }
+
+export function invite(email: string) {
+  return api.post('/auth/invite', { email });
+}
