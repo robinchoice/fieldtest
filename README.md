@@ -30,7 +30,7 @@ Web läuft auf http://localhost:5173, die API auf Port 3000. Ohne `SMTP_HOST` st
 | `packages/db` | Drizzle-Schema und Migrationen |
 | `packages/shared` | Name, Farbband, zod-Schemas, Texte auf Deutsch und Englisch (`messages.ts`) |
 
-Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`, in `apps/web` außerdem `og-image` (Vorschaubild für geteilte Links, DESIGN.md).
+Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`, in `apps/web` außerdem `og-image` (Vorschaubild für geteilte Links, DESIGN.md). Die Browser-Tests in `test` starten API und Web selbst auf eigenen Ports 53100 und 54100, nie die laufenden Dev-Server; testen zwei Worktrees gleichzeitig, bekommt einer andere per `TEST_API_PORT` und `TEST_WEB_PORT`.
 
 ## So läuft eine Runde
 
@@ -59,6 +59,10 @@ Der Runner ruft nur öffentliche Hostnamen auf, damit eine präparierte Lightnin
 ## Deploy auf Coolify
 
 Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
+
+## Login in der Savor-Vorschau
+
+Agenten zeigen Änderungen hinter dem Login in der Savor-Vorschau mit dem Testkonto admin@pleasance.org. `login-link <slug>` aus dem Kontor ruft dafür im API-Container `bun apps/api/src/login-link.ts <email>` auf. Das gibt einen einmaligen Login-Link aus, 15 Minuten gültig wie ein gemailter, den der Agent per `browser_navigate` öffnet. Die Vorschau hat pro Projekt ein festes Profil, und Sessions in Benutzung verlängern sich bei jedem Besuch auf 30 Tage. Also bleibt sie angemeldet.
 
 ## Bewusst offen
 

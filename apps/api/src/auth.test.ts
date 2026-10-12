@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
-import { createDb, migrateDb } from '@app/db';
+import { createDb, migrateDb, sessions, users } from '@app/db';
+import { eq } from 'drizzle-orm';
 import { createApp } from './app';
+import { generateToken, hashToken } from './middleware/auth';
 
 // Runs against DATABASE_URL. Only adds rows with fresh addresses, so the
 // local dev database is safe to use.
@@ -128,4 +130,34 @@ test('a code stops working after five wrong tries', async () => {
   const code = lastMailedCode()!;
   for (let i = 0; i < 5; i++) await post('/auth/code/verify', { email, code: otherCode(code) });
   expect((await post('/auth/code/verify', { email, code })).status).toBe(400);
+});
+
+test('login-link prints a magic link that logs in', async () => {
+  const email = freshEmail();
+  const run = Bun.spawnSync(['bun', 'src/login-link.ts', email], {
+    env: { ...process.env, APP_URL: 'https://app.test' },
+  });
+  const link = new URL(run.stdout.toString().trim());
+  expect(link.origin + link.pathname).toBe('https://app.test/auth/verify');
+
+  const verify = await post('/auth/verify', { token: link.searchParams.get('token') });
+  expect((await body(verify)).user.email).toBe(email);
+});
+
+test('a session in use is renewed', async () => {
+  const [user] = await db.insert(users).values({ email: freshEmail(), name: 'Lena' }).returning({ id: users.id });
+  const token = generateToken();
+  const [session] = await db
+    .insert(sessions)
+    .values({ userId: user!.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60_000) })
+    .returning({ id: sessions.id });
+
+  const me = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${token}` } });
+  expect(me.headers.get('set-cookie')).toContain(`session=${token}`);
+  const [renewed] = await db.select().from(sessions).where(eq(sessions.id, session!.id));
+  expect(renewed!.expiresAt.getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
+
+  // Renewed sessions are left alone for a day
+  const again = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${token}` } });
+  expect(again.headers.get('set-cookie')).toBeNull();
 });

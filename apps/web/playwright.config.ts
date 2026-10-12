@@ -5,12 +5,19 @@ import { defineConfig, devices } from '@playwright/test';
 const envFile = new URL('../../.env', import.meta.url);
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
-// Starts API and web like `bun run dev`, or reuses them when they already run
+// Own ports and fresh servers, so the tests never run against the dev server of another
+// worktree or project. Worktrees testing at the same time pick other ports via
+// TEST_API_PORT and TEST_WEB_PORT.
+const API_PORT = Number(process.env.TEST_API_PORT ?? 53100);
+const WEB_PORT = Number(process.env.TEST_WEB_PORT ?? 54100);
+const API = `http://localhost:${API_PORT}`;
+const WEB = `http://localhost:${WEB_PORT}`;
+
 export default defineConfig({
   testDir: 'tests',
   forbidOnly: !!process.env.CI,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: WEB,
     // German is the default language, the texts in the tests are German
     locale: 'de-DE',
     // Rate limits live in the database, so each run counts against its own address
@@ -19,11 +26,17 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: devices['Desktop Chrome'] }],
   webServer: [
     {
-      command: 'bun run dev',
+      command: 'bun src/index.ts',
       cwd: '../api',
-      url: 'http://localhost:3000/api/health',
-      reuseExistingServer: !process.env.CI,
+      env: { PORT: String(API_PORT), APP_URL: WEB },
+      url: `${API}/api/health`,
+      reuseExistingServer: false,
     },
-    { command: 'bun run dev', url: 'http://localhost:5173', reuseExistingServer: !process.env.CI },
+    {
+      command: `bunx vite dev --port ${WEB_PORT} --strictPort`,
+      env: { API_INTERNAL_URL: API },
+      url: WEB,
+      reuseExistingServer: false,
+    },
   ],
 });

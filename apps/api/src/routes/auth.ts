@@ -9,16 +9,24 @@ import {
 } from '@app/shared';
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { deleteCookie, setCookie } from 'hono/cookie';
+import { deleteCookie } from 'hono/cookie';
 import { t } from '../lib/i18n';
 import { sendLoginCodeEmail, sendMagicLinkEmail } from '../lib/mail';
 import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
 import { validJson } from '../lib/validate';
-import { currentUser, generateToken, hashToken, requireAuth, SESSION_COOKIE, sessionToken } from '../middleware/auth';
+import {
+  currentUser,
+  generateToken,
+  hashToken,
+  requireAuth,
+  SESSION_COOKIE,
+  SESSION_DAYS,
+  sessionToken,
+  setSessionCookie,
+} from '../middleware/auth';
 import type { AppEnv } from '../types';
 
 const MINUTE = 60 * 1000;
-const SESSION_DAYS = 30;
 // Apps would otherwise ask for a new code every month
 const APP_SESSION_DAYS = 365;
 const CODE_ATTEMPTS = 5;
@@ -83,13 +91,7 @@ export const authRoutes = new Hono<AppEnv>()
     if (!link) return c.json({ error: t(c).linkExpired }, 400);
 
     const { user, token } = await startSession(db, link.email, SESSION_DAYS);
-    setCookie(c, SESSION_COOKIE, token, {
-      httpOnly: true,
-      sameSite: 'Lax',
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      maxAge: SESSION_DAYS * 24 * 60 * 60,
-    });
+    setSessionCookie(c, token);
     return c.json({ user });
   })
 
