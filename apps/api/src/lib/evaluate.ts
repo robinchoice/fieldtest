@@ -1,15 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { type Database, events, feedback, findings, rounds, testSessions } from '@app/db';
+import { type Database, evaluationJobs, events, feedback, findings, rounds, testSessions } from '@app/db';
 import { SEVERITIES } from '@app/shared';
-import { and, asc, eq, gt, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lte, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { captureException } from '../monitoring';
 import { mergeFinding, settleFinding } from './claims';
 
 // Evaluates every new report with Claude: is it a known finding, how severe is
-// it, and does it match what the overlay recorded? Only runs with ANTHROPIC_API_KEY.
-export const evaluationEnabled = () => !!process.env.ANTHROPIC_API_KEY;
+// it, and does it match what the overlay recorded? The worker runs it, and only
+// with ANTHROPIC_API_KEY. Without it the jobs are dropped and the owner rates.
+const evaluationEnabled = () => !!process.env.ANTHROPIC_API_KEY;
 
 export const evaluationSchema = z.object({
   // Number of an existing finding this report describes, or null for a new one
@@ -43,6 +44,7 @@ const escapePrompt = (value: string) => value.replaceAll('&', '&amp;').replaceAl
 
 // Claude Opus 5.5 with structured output. "default" fallbacks retry a declined request on another model.
 const askClaude: Ask = async (prompt) => {
+  if (!evaluationEnabled()) return null;
   client ??= new Anthropic();
   const response = await client.beta.messages.parse({
     model: 'claude-opus-5-5',
@@ -136,11 +138,40 @@ export async function evaluateFeedback(db: Database, feedbackId: string, ask: As
   if (accept) await settleFinding(db, own);
 }
 
-// Runs after the response, a failed evaluation leaves the finding for the owner
-export function evaluateLater(db: Database, feedbackId: string) {
-  if (!evaluationEnabled()) return;
-  evaluateFeedback(db, feedbackId).catch((err) => {
-    console.error('Evaluation failed:', err);
+// A claimed job is due again after this, well beyond the usual length of a request to Claude
+const LEASE = sql`now() + interval '15 minutes'`;
+const MAX_ATTEMPTS = 3;
+
+// Claims the oldest due job and evaluates it. A failed evaluation is tried again
+// when the lease runs out, after MAX_ATTEMPTS the finding stays with the owner.
+// Returns false when no job is due.
+export async function runNextEvaluation(db: Database, ask: Ask = askClaude) {
+  const due = db
+    .select({ id: evaluationJobs.feedbackId })
+    .from(evaluationJobs)
+    .where(lte(evaluationJobs.runAt, sql`now()`))
+    .orderBy(asc(evaluationJobs.runAt))
+    .limit(1)
+    .for('update', { skipLocked: true });
+  const [job] = await db
+    .update(evaluationJobs)
+    .set({ runAt: LEASE, attempts: sql`${evaluationJobs.attempts} + 1` })
+    .where(inArray(evaluationJobs.feedbackId, due))
+    .returning();
+  if (!job) return false;
+
+  const done = () => db.delete(evaluationJobs).where(eq(evaluationJobs.feedbackId, job.feedbackId));
+  if (job.attempts > MAX_ATTEMPTS) {
+    console.error(`[worker] Giving up on the evaluation of feedback ${job.feedbackId}`);
+    await done();
+    return true;
+  }
+  try {
+    await evaluateFeedback(db, job.feedbackId, ask);
+    await done();
+  } catch (err) {
+    console.error(`[worker] Evaluation of feedback ${job.feedbackId} failed:`, err);
     captureException(err);
-  });
+  }
+  return true;
 }

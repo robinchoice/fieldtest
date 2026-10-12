@@ -1,11 +1,10 @@
 import path from 'node:path';
-import { claims, feedback, findings, rounds, runners, testers, testSessions, users } from '@app/db';
+import { claims, evaluationJobs, feedback, findings, rounds, runners, testers, testSessions, users } from '@app/db';
 import { sdkEventsSchema, sdkFeedbackSchema, sdkStartSchema } from '@app/shared';
 import { and, eq, inArray, max, sql } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { evaluateLater } from '../lib/evaluate';
 import { t } from '../lib/i18n';
 import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
 import { runnerOnline } from '../lib/runners';
@@ -143,7 +142,7 @@ export const sdkRoutes = new Hono<AppEnv>()
     return c.json(await sessionState(db, fresh, round));
   })
 
-  // Every report starts as its own finding. The evaluation (lib/evaluate.ts) or the owner merges duplicates.
+  // Every report starts as its own finding. The evaluation in the worker (lib/evaluate.ts) or the owner merges duplicates.
   .post('/session/feedback', validJson(sdkFeedbackSchema), async (c) => {
     const { session, round } = await currentSession(c);
     if (session.endedAt) return c.json({ error: t(c).sessionEnded }, 409);
@@ -151,7 +150,7 @@ export const sdkRoutes = new Hono<AppEnv>()
     const { type, text, anchor } = c.req.valid('json');
     const db = c.get('db');
 
-    const report = await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       await tx.select({ id: rounds.id }).from(rounds).where(eq(rounds.id, round.id)).for('no key update');
       const [{ last }] = (await tx
         .select({ last: max(findings.number) })
@@ -180,9 +179,8 @@ export const sdkRoutes = new Hono<AppEnv>()
           auto: anchor.auto,
         })
         .returning({ id: feedback.id });
-      return report!;
+      await tx.insert(evaluationJobs).values({ feedbackId: report!.id });
     });
-    evaluateLater(db, report.id);
     await db.update(testSessions).set({ lastSeenAt: new Date() }).where(eq(testSessions.id, session.id));
     return c.json(await sessionState(db, session, round));
   })

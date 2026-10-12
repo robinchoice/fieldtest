@@ -207,3 +207,14 @@ export const runners = pgTable('runners', {
   lastSeenAt: timestamp('last_seen_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// Reports the worker (apps/api/src/worker.ts) still has to evaluate. A claimed job
+// waits until runAt, so a job a crashed worker left behind comes up again then.
+export const evaluationJobs = pgTable('evaluation_jobs', {
+  feedbackId: uuid('feedback_id')
+    .references(() => feedback.id, { onDelete: 'cascade' })
+    .primaryKey(),
+  attempts: integer('attempts').default(0).notNull(),
+  runAt: timestamp('run_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

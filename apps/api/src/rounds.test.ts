@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
-import { claims, createDb, feedback, migrateDb, testSessions } from '@app/db';
+import { claims, createDb, evaluationJobs, feedback, migrateDb, testSessions } from '@app/db';
 import { eq, sql } from 'drizzle-orm';
 import { createApp } from './app';
-import { evaluateFeedback } from './lib/evaluate';
+import { type Ask, evaluateFeedback, runNextEvaluation } from './lib/evaluate';
 import { checkPayment } from './lib/payments';
 
 // Runs against DATABASE_URL like auth.test.ts. Every test round and tester is new.
@@ -355,6 +355,67 @@ test('reports the session does not back up wait for the owner', async () => {
   expect(findings[0]).toMatchObject({ severity: 'blocker', status: 'new' });
   const [, ledger] = await call('GET', `/rounds/${round.id}/claims`, undefined, owner);
   expect(ledger.claims).toEqual([]);
+});
+
+test('the worker evaluates reports and takes up jobs left behind again', async () => {
+  const owner = await login();
+  const round = await newRound(owner);
+  const token = await startSession(round.inviteToken);
+  const report = async (text: string) => {
+    await call(
+      'POST',
+      '/sdk/session/feedback',
+      { type: 'bug', text, anchor: { label: 'x', screen: '/' } },
+      bearer(token),
+    );
+    const [row] = await db.select().from(feedback).where(eq(feedback.text, text));
+    return row!;
+  };
+  const job = async (feedbackId: string) =>
+    (await db.select().from(evaluationJobs).where(eq(evaluationJobs.feedbackId, feedbackId)))[0];
+  // Jobs of other tests are dropped unchanged
+  const work = async (ask: Ask) => {
+    while (await runNextEvaluation(db, ask));
+  };
+
+  const text = `Save loses the draft ${crypto.randomUUID()}`;
+  const first = await report(text);
+  expect(await job(first.id)).toMatchObject({ attempts: 0 });
+
+  // A worker dies mid-evaluation: the job stays claimed until its lease runs out
+  await work(async (prompt) => {
+    if (prompt.includes(text)) throw new Error('worker died');
+    return null;
+  });
+  const claimed = await job(first.id);
+  expect(claimed!.attempts).toBe(1);
+  expect(claimed!.runAt.getTime()).toBeGreaterThan(Date.now());
+  expect(await runNextEvaluation(db, async () => null)).toBe(false);
+
+  await db
+    .update(evaluationJobs)
+    .set({ runAt: sql`now() - interval '1 second'` })
+    .where(eq(evaluationJobs.feedbackId, first.id));
+  await work(async (prompt) =>
+    prompt.includes(text)
+      ? { duplicateOf: null, severity: 'minor', grounded: false, title: 'Draft lost', summary: 'S', fix: 'F' }
+      : null,
+  );
+  expect(await job(first.id)).toBeUndefined();
+  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
+  expect(findings[0]).toMatchObject({ title: 'Draft lost', severity: 'minor', status: 'new' });
+
+  // After three attempts the report stays with the owner
+  const poison = `Crashes the worker ${crypto.randomUUID()}`;
+  const second = await report(poison);
+  await db.update(evaluationJobs).set({ attempts: 3 }).where(eq(evaluationJobs.feedbackId, second.id));
+  const asked: string[] = [];
+  await work(async (prompt) => {
+    asked.push(prompt);
+    return null;
+  });
+  expect(asked.filter((prompt) => prompt.includes(poison))).toEqual([]);
+  expect(await job(second.id)).toBeUndefined();
 });
 
 test('shared reports are readable without login and leave out tester names', async () => {

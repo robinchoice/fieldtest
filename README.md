@@ -23,7 +23,7 @@ Web läuft auf http://localhost:5173, die API auf Port 3000. Ohne `SMTP_HOST` st
 | Pfad | Inhalt |
 |---|---|
 | `apps/api` | Hono-API unter `/api/v1`: Runden (`routes/rounds.ts`), Overlay (`routes/sdk.ts`), Runner (`routes/runner.ts`), geteilte Berichte (`routes/reports.ts`) |
-| `apps/api/src/lib` | Live-Belohnungen (`sessions.ts`), Claims und Reputation (`claims.ts`), Zahlungsbelege (`payments.ts`), KI-Bewertung (`evaluate.ts`) |
+| `apps/api/src/lib` | Live-Belohnungen (`sessions.ts`), Claims und Reputation (`claims.ts`), Zahlungsbelege (`payments.ts`), KI-Bewertung (`evaluate.ts`, läuft im Worker `apps/api/src/worker.ts`) |
 | `apps/web` | Dashboard für Owner, geteilte Berichte unter `/r/<token>`, Demo-Prototyp unter `static/demo`, `/health` ist der Healthcheck des Web-Servers |
 | `apps/runner` | Auszahlungs-Runner für den Rechner des Owners |
 | `packages/sdk` | Tester-Overlay, die API liefert es gebündelt unter `/api/v1/sdk/overlay.js` aus |
@@ -58,7 +58,7 @@ Der Runner ruft nur öffentliche Hostnamen auf, damit eine präparierte Lightnin
 
 ## Deploy auf Coolify
 
-Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
+Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional und geht nur an den Service `worker`. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
 
 ## Registrierung öffnen
 

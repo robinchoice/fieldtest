@@ -29,9 +29,27 @@ services:
       - SIGNUP_OPEN=${SIGNUP_OPEN:-}
       - ADMIN_EMAILS=${ADMIN_EMAILS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Evaluates tester reports with Claude (apps/api/src/worker.ts)
+  worker:
+    image: ${IMAGE_PREFIX:?IMAGE_PREFIX is required}-api:${IMAGE_TAG:?IMAGE_TAG is required}
+    command: ["bun", "apps/api/src/worker.ts"]
+    environment:
+      - DATABASE_URL=postgresql://app:${POSTGRES_PASSWORD}@postgres:5432/app
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PORT=3001
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3001/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      api:
         condition: service_healthy
     restart: unless-stopped
 
