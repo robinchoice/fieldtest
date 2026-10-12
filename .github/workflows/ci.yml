@@ -43,11 +43,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       # From apps/web, so bunx takes the Playwright version the tests use and not the latest from npm
-      - if: steps.browsers.outputs.cache-hit != 'true'
-        run: bunx playwright install --with-deps chromium
-        working-directory: apps/web
-      - if: steps.browsers.outputs.cache-hit == 'true'
-        run: bunx playwright install-deps chromium
+      - run: bunx playwright install --with-deps chromium
         working-directory: apps/web
       - run: bun run check
       # Builds the web app and tests the build

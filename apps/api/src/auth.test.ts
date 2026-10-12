@@ -210,19 +210,20 @@ test('links and codes cannot create accounts after sign-up closes', async () => 
   }
 });
 
-async function sessionFor(email: string) {
-  const [user] = await db.insert(users).values({ email, name: 'Robin' }).returning({ id: users.id });
+async function sessionFor(email: string, name = 'Robin') {
+  const [user] = await db.insert(users).values({ email, name }).returning({ id: users.id });
   const token = generateToken();
-  await db
+  const [session] = await db
     .insert(sessions)
-    .values({ userId: user!.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60_000) });
-  return { cookie: `session=${token}` };
+    .values({ userId: user!.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60_000) })
+    .returning({ id: sessions.id });
+  return { headers: { cookie: `session=${token}` }, token, id: session!.id };
 }
 
 test('admins invite testers past the closed sign-up, others get 403', async () => {
   const admin = freshEmail();
-  const asAdmin = await sessionFor(admin);
-  const asUser = await sessionFor(freshEmail());
+  const { headers: asAdmin } = await sessionFor(admin);
+  const { headers: asUser } = await sessionFor(freshEmail());
   delete process.env.SIGNUP_OPEN;
   process.env.ADMIN_EMAILS = `someone@example.com, ${admin.toUpperCase()}`;
   try {
@@ -272,19 +273,14 @@ test('login-link requires APP_URL before issuing a link', () => {
 });
 
 test('a session in use is renewed', async () => {
-  const [user] = await db.insert(users).values({ email: freshEmail(), name: 'Lena' }).returning({ id: users.id });
-  const token = generateToken();
-  const [session] = await db
-    .insert(sessions)
-    .values({ userId: user!.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60_000) })
-    .returning({ id: sessions.id });
+  const { headers, token, id } = await sessionFor(freshEmail(), 'Lena');
 
-  const me = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${token}` } });
+  const me = await app.request('/api/v1/auth/me', { headers });
   expect(me.headers.get('set-cookie')).toContain(`session=${token}`);
-  const [renewed] = await db.select().from(sessions).where(eq(sessions.id, session!.id));
+  const [renewed] = await db.select().from(sessions).where(eq(sessions.id, id));
   expect(renewed!.expiresAt.getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
 
   // Renewed sessions are left alone for a day
-  const again = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${token}` } });
+  const again = await app.request('/api/v1/auth/me', { headers });
   expect(again.headers.get('set-cookie')).toBeNull();
 });
