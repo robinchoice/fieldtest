@@ -46,6 +46,7 @@ test('strangers learn that sign-up is still closed', async ({ page }) => {
 test('a magic link opens the dashboard until logout', async ({ page }) => {
   // Stored like the API does it: only the hash of the token
   const email = freshEmail();
+  await sql`insert into users (email, name) values (${email}, ${email.split('@')[0]!})`;
   const token = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(token).digest('hex');
   await sql`insert into magic_links (email, token_hash, expires_at)
@@ -63,6 +64,7 @@ test('a magic link opens the dashboard until logout', async ({ page }) => {
 });
 
 async function logInAs(page: Page, email: string) {
+  await sql`insert into users (email, name) values (${email}, 'Lena') on conflict (email) do nothing`;
   const token = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(token).digest('hex');
   await sql`insert into magic_links (email, token_hash, expires_at)

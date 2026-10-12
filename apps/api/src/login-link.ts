@@ -4,13 +4,20 @@
 //   bun apps/api/src/login-link.ts <email>
 import { createDb, magicLinks } from '@app/db';
 import { magicLinkSchema } from '@app/shared';
+import { mayLogIn } from './lib/signup';
 import { generateToken, hashToken } from './middleware/auth';
 
 const { email } = magicLinkSchema.parse({ email: process.argv[2] });
+const appUrl = process.env.APP_URL;
+if (!appUrl) throw new Error('APP_URL is required');
 const db = createDb(process.env.DATABASE_URL!);
+if (!(await mayLogIn(db, email))) {
+  await db.$client.end();
+  throw new Error('Sign-up is closed for this address');
+}
 const token = generateToken();
 await db
   .insert(magicLinks)
   .values({ email, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
 await db.$client.end();
-console.log(`${process.env.APP_URL}/auth/verify?token=${token}`);
+console.log(`${appUrl}/auth/verify?token=${token}`);

@@ -28,7 +28,13 @@ export default defineConfig({
     {
       command: 'bun src/index.ts',
       cwd: '../api',
-      env: { PORT: String(API_PORT), APP_URL: WEB, ADMIN_EMAILS: 'e2e-admin@example.com' },
+      env: {
+        PORT: String(API_PORT),
+        APP_URL: WEB,
+        ADMIN_EMAILS: 'e2e-admin@example.com',
+        SIGNUP_OPEN: '',
+        SIGNUP_ALLOWLIST: '',
+      },
       url: `${API}/api/health`,
       reuseExistingServer: false,
     },
