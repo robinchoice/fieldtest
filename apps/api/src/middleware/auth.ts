@@ -1,4 +1,4 @@
-import { type Database, magicLinks, sessions, users } from '@app/db';
+import { sessions, users } from '@app/db';
 import { and, eq, gt } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
@@ -9,7 +9,7 @@ import type { AppEnv } from '../types';
 
 export const SESSION_COOKIE = 'session';
 export const SESSION_DAYS = 30;
-export const DAY = 24 * 60 * 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
 
 export function generateToken() {
   return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
@@ -18,14 +18,6 @@ export function generateToken() {
 // Only hashes are stored, so a leaked database holds no usable tokens.
 export function hashToken(token: string) {
   return new Bun.CryptoHasher('sha256').update(token).digest('hex');
-}
-
-export async function createMagicLink(db: Database, email: string) {
-  const token = generateToken();
-  await db
-    .insert(magicLinks)
-    .values({ email, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 15 * 60_000) });
-  return token;
 }
 
 // Native clients such as mobile apps have no cookie jar and send the

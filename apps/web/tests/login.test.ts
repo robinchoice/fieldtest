@@ -23,17 +23,6 @@ async function openHydrated(page: Page, path: string) {
   await Promise.all([page.waitForResponse('**/api/v1/auth/me'), page.goto(path)]);
 }
 
-async function logInAs(page: Page, email: string, name = 'Lena') {
-  await sql`insert into users (email, name) values (${email}, ${name}) on conflict (email) do nothing`;
-  // Stored like the API does it: only the hash of the token
-  const token = randomBytes(32).toString('hex');
-  const tokenHash = createHash('sha256').update(token).digest('hex');
-  await sql`insert into magic_links (email, token_hash, expires_at)
-    values (${email}, ${tokenHash}, ${new Date(Date.now() + 15 * 60_000)})`;
-  await page.goto(`/auth/verify?token=${token}`);
-  await expect(page).toHaveURL(/\/dashboard$/);
-}
-
 test('the login form sends a magic link to an existing account', async ({ page }) => {
   const email = freshEmail();
   await sql`insert into users (email, name) values (${email}, 'Lena')`;
@@ -55,8 +44,16 @@ test('strangers learn that sign-up is still closed', async ({ page }) => {
 });
 
 test('a magic link opens the dashboard until logout', async ({ page }) => {
+  // Stored like the API does it: only the hash of the token
   const email = freshEmail();
-  await logInAs(page, email, email.split('@')[0]!);
+  await sql`insert into users (email, name) values (${email}, ${email.split('@')[0]!})`;
+  const token = randomBytes(32).toString('hex');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  await sql`insert into magic_links (email, token_hash, expires_at)
+    values (${email}, ${tokenHash}, ${new Date(Date.now() + 15 * 60_000)})`;
+
+  await page.goto(`/auth/verify?token=${token}`);
+  await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: 'Testrunden' })).toBeVisible();
   await expect(page.getByText(email.split('@')[0]!).first()).toBeVisible();
 
@@ -65,6 +62,16 @@ test('a magic link opens the dashboard until logout', async ({ page }) => {
   await page.goto('/dashboard');
   await expect(page).toHaveURL(/\/login\?next=%2Fdashboard$/);
 });
+
+async function logInAs(page: Page, email: string) {
+  await sql`insert into users (email, name) values (${email}, 'Lena') on conflict (email) do nothing`;
+  const token = randomBytes(32).toString('hex');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  await sql`insert into magic_links (email, token_hash, expires_at)
+    values (${email}, ${tokenHash}, ${new Date(Date.now() + 15 * 60_000)})`;
+  await page.goto(`/auth/verify?token=${token}`);
+  await expect(page).toHaveURL(/\/dashboard$/);
+}
 
 // The API runs with ADMIN_EMAILS=e2e-admin@example.com, see playwright.config.ts
 test('the admin invites a tester, who can log in afterwards', async ({ page }) => {

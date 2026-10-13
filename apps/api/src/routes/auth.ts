@@ -17,9 +17,7 @@ import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
 import { isAdmin, mayLogIn } from '../lib/signup';
 import { validJson } from '../lib/validate';
 import {
-  createMagicLink,
   currentUser,
-  DAY,
   generateToken,
   hashToken,
   requireAdmin,
@@ -56,13 +54,21 @@ async function startSession(db: Database, email: string, days: number) {
   await db.insert(sessions).values({
     userId: user!.id,
     tokenHash: hashToken(token),
-    expiresAt: new Date(Date.now() + days * DAY),
+    expiresAt: new Date(Date.now() + days * 24 * 60 * MINUTE),
   });
   return { user: withAdmin(user!), token };
 }
 
 async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | null) {
-  const token = await createMagicLink(c.get('db'), email);
+  const token = generateToken();
+  await c
+    .get('db')
+    .insert(magicLinks)
+    .values({
+      email,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + 15 * MINUTE),
+    });
   await sendMagicLinkEmail(email, token, next, t(c));
 }
 
