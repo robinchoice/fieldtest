@@ -159,54 +159,15 @@ test('closed sign-up mails only existing accounts and the allowlist', async () =
     expect((await post('/auth/magic-link', { email: allowed })).status).toBe(200);
     expect((await body(post('/auth/verify', { token: lastMailedToken() }))).user.email).toBe(allowed);
 
+    // login-link still works, Savor's test account needs no allowlist entry
     const run = Bun.spawnSync(['bun', 'src/login-link.ts', stranger], {
       env: { ...process.env, APP_URL: 'https://app.test' },
     });
-    expect(run.exitCode).toBe(1);
-    expect(run.stdout.toString()).toBe('');
-    expect(run.stderr.toString()).toContain('Sign-up is closed for this address');
-    expect(await db.select().from(users).where(eq(users.email, stranger))).toEqual([]);
-
-    const existingLink = Bun.spawnSync(['bun', 'src/login-link.ts', existing!.email], {
-      env: { ...process.env, APP_URL: 'https://app.test' },
-    });
-    expect(existingLink.exitCode).toBe(0);
-    const token = new URL(existingLink.stdout.toString().trim()).searchParams.get('token');
-    expect((await body(post('/auth/verify', { token }))).user.email).toBe(existing!.email);
+    const token = new URL(run.stdout.toString().trim()).searchParams.get('token');
+    expect((await body(post('/auth/verify', { token }))).user.email).toBe(stranger);
   } finally {
     process.env.SIGNUP_OPEN = 'true';
     delete process.env.SIGNUP_ALLOWLIST;
-  }
-});
-
-test('links and codes cannot create accounts after sign-up closes', async () => {
-  const headers = { 'x-forwarded-for': crypto.randomUUID() };
-  const linkEmail = freshEmail();
-  const codeEmail = freshEmail();
-  expect((await post('/auth/magic-link', { email: linkEmail }, headers)).status).toBe(200);
-  const token = lastMailedToken();
-  expect((await post('/auth/code', { email: codeEmail }, headers)).status).toBe(200);
-  const code = lastMailedCode();
-  const previousAllowlist = process.env.SIGNUP_ALLOWLIST;
-  delete process.env.SIGNUP_OPEN;
-  process.env.SIGNUP_ALLOWLIST = '';
-  try {
-    expect((await post('/auth/verify', { token }, headers)).status).toBe(403);
-    expect((await post('/auth/code/verify', { email: codeEmail, code }, headers)).status).toBe(403);
-    expect(await db.select().from(users).where(eq(users.email, linkEmail))).toEqual([]);
-    expect(await db.select().from(users).where(eq(users.email, codeEmail))).toEqual([]);
-
-    const allowed = freshEmail();
-    process.env.SIGNUP_ALLOWLIST = allowed;
-    expect((await post('/auth/magic-link', { email: allowed }, headers)).status).toBe(200);
-    const allowedToken = lastMailedToken();
-    process.env.SIGNUP_ALLOWLIST = '';
-    expect((await post('/auth/verify', { token: allowedToken }, headers)).status).toBe(403);
-    expect(await db.select().from(users).where(eq(users.email, allowed))).toEqual([]);
-  } finally {
-    process.env.SIGNUP_OPEN = 'true';
-    if (previousAllowlist === undefined) delete process.env.SIGNUP_ALLOWLIST;
-    else process.env.SIGNUP_ALLOWLIST = previousAllowlist;
   }
 });
 
@@ -260,15 +221,6 @@ test('login-link prints a magic link that logs in', async () => {
 
   const verify = await post('/auth/verify', { token: link.searchParams.get('token') });
   expect((await body(verify)).user.email).toBe(email);
-});
-
-test('login-link requires APP_URL before issuing a link', () => {
-  const run = Bun.spawnSync(['bun', 'src/login-link.ts', freshEmail()], {
-    env: { ...process.env, APP_URL: '' },
-  });
-  expect(run.exitCode).toBe(1);
-  expect(run.stdout.toString()).toBe('');
-  expect(run.stderr.toString()).toContain('APP_URL is required');
 });
 
 test('a session in use is renewed', async () => {

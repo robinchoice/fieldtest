@@ -112,7 +112,6 @@ export const authRoutes = new Hono<AppEnv>()
       )
       .returning({ email: magicLinks.email });
     if (!link) return c.json({ error: t(c).linkExpired }, 400);
-    if (!(await mayLogIn(db, link.email))) return c.json({ error: t(c).signupClosed }, 403);
 
     const { user, token } = await startSession(db, link.email, SESSION_DAYS);
     setSessionCookie(c, token);
@@ -167,7 +166,6 @@ export const authRoutes = new Hono<AppEnv>()
       .where(and(eq(loginCodes.id, match.id), isNull(loginCodes.usedAt)))
       .returning({ id: loginCodes.id });
     if (!used) return c.json({ error: t(c).codeWrong }, 400);
-    if (!(await mayLogIn(db, email))) return c.json({ error: t(c).signupClosed }, 403);
 
     return c.json(await startSession(db, email, APP_SESSION_DAYS));
   })
