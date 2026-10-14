@@ -3,7 +3,7 @@
 ## Zweck & Links
 
 - Tester-Service für Prototypen: Overlay im Prototyp, Belohnung in Sats, Feedback mit Ort in der App. Ausgezahlt wird über den Runner des Owners (`apps/runner`).
-- Noch nicht deployt: keine Domain, keine Coolify-Ressource.
+- Live: https://fieldtest.pleasance.org, Coolify-Projekt `pleasance-fieldtest`, Ressource `fieldtest` (web, api, worker, postgres). Registrierung geschlossen.
 
 ## Checks
 
@@ -11,7 +11,7 @@
 
 ## Deploy
 
-- Ein Push auf `main` baut nach grüner CI die Images. Den Deploy überspringt die CI, solange die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID` fehlen. Einrichten wie in der README unter „Deploy auf Coolify“, danach diesen Abschnitt um Live-URL und Prüfung ergänzen.
+- Ein Push auf `main` baut nach grüner CI die Images und deployt sie über die Coolify-API (Secrets `COOLIFY_TOKEN` mit dem Token `ci-fieldtest` und `COOLIFY_UUID`). Ohne `COOLIFY_TOKEN` überspringt die CI den Deploy.
 - Prüfen: `gh run watch`. Mit Deploy ist der Job erst grün, wenn `https://fieldtest.pleasance.org/api/health` (bzw. die Repo-Variable `API_URL`) den Commit als `revision` meldet.
 
 ## Fallen
