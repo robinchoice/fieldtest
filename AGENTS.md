@@ -3,7 +3,7 @@
 ## Zweck & Links
 
 - Tester-Service für Prototypen: Overlay im Prototyp, Belohnung in Sats, Feedback mit Ort in der App. Ausgezahlt wird über den Runner des Owners (`apps/runner`).
-- Live: https://fieldtest.pleasance.org, Coolify-Projekt `pleasance-fieldtest`, Ressource `fieldtest` (web, api, worker, postgres). Registrierung geschlossen.
+- Live: https://fieldtest.pleasance.org, Coolify-Projekt `pleasance-fieldtest`, Ressource `fieldtest` (web, api, worker, postgres).
 
 ## Checks
 
