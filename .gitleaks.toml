@@ -1,0 +1,11 @@
+# Secret scan in .github/workflows/secrets.yml, on top of the gitleaks default rules.
+[extend]
+useDefault = true
+
+# Hashes of bundled third-party code in the lockfile trip the entropy rule
+# generic-api-key. Only that rule is skipped there, real token formats like ghp_
+# or sk_live_ are still caught in it.
+[[allowlists]]
+description = "Bundled third-party code"
+targetRules = ["generic-api-key"]
+paths = ['''(^|/)bun\.lock$''']
