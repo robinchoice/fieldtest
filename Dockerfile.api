@@ -12,6 +12,8 @@ RUN bun install --frozen-lockfile --production
 
 COPY packages packages
 COPY apps/api apps/api
+# Drafts of update mails, imported on start
+COPY updates updates
 
 # Set by CI: /api/health reports the commit
 ARG APP_VERSION=dev

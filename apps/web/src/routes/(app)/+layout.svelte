@@ -31,8 +31,10 @@
     <a href="/dashboard" class="brand">{APP_NAME}</a>
     <span class="user">{auth.user.name}</span>
     {#if auth.user.admin}
+      <Button variant="secondary" href="/admin/updates">{t().updates}</Button>
       <Button variant="secondary" href="/invite">{t().inviteTester}</Button>
     {/if}
+    <Button variant="secondary" href="/settings">{t().settings}</Button>
     <Button variant="secondary" onclick={handleLogout}>{t().logOut}</Button>
   </header>
   <main>
@@ -43,7 +45,8 @@
 <style>
   header {
     display: flex;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
     align-items: center;
     padding: 0.75rem 1.5rem;
     border-bottom: 1px solid var(--border);

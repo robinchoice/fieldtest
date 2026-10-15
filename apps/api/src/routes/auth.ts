@@ -1,4 +1,4 @@
-import { type Database, loginCodes, magicLinks, sessions, users } from '@app/db';
+import { loginCodes, magicLinks, sessions, users } from '@app/db';
 import {
   inviteSchema,
   loginCodeSchema,
@@ -11,7 +11,7 @@ import {
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
-import { t } from '../lib/i18n';
+import { locale, t } from '../lib/i18n';
 import { sendLoginCodeEmail, sendMagicLinkEmail } from '../lib/mail';
 import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
 import { mayLogIn } from '../lib/signup';
@@ -39,14 +39,21 @@ const mailsPerAddress = rateLimit('mails-per-address', 5, 60 * MINUTE);
 const mailsPerIp = rateLimit('mails-per-ip', 20, 60 * MINUTE);
 const codeChecksPerIp = rateLimit('code-checks-per-ip', 30, 15 * MINUTE);
 
+// Switching update mails on keeps the time of the first consent as proof
+export const consentNow = sql`coalesce(${users.updatesConsentAt}, now())`;
+
 // The first login creates the account, /magic-link and /code only send one
-// to addresses that may sign up. The no-op update lets RETURNING
-// yield existing users too.
-async function startSession(db: Database, email: string, days: number) {
+// to addresses that may sign up. Every login refreshes the language of the
+// update mails. A ticked opt-in switches them on, an unticked one leaves them.
+async function startSession(c: Context<AppEnv>, email: string, days: number, updates: boolean) {
+  const db = c.get('db');
   const [user] = await db
     .insert(users)
-    .values({ email, name: email.split('@')[0]! })
-    .onConflictDoUpdate({ target: users.email, set: { email } })
+    .values({ email, name: email.split('@')[0]!, locale: locale(c), updatesConsentAt: updates ? new Date() : null })
+    .onConflictDoUpdate({
+      target: users.email,
+      set: { locale: locale(c), ...(updates && { updatesConsentAt: consentNow }) },
+    })
     .returning(userColumns);
 
   const token = generateToken();
@@ -58,7 +65,7 @@ async function startSession(db: Database, email: string, days: number) {
   return { user: toUser(user!), token };
 }
 
-async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | null) {
+async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | null, updatesOptIn = false) {
   const token = generateToken();
   await c
     .get('db')
@@ -66,17 +73,18 @@ async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | n
     .values({
       email,
       tokenHash: hashToken(token),
+      updatesOptIn,
       expiresAt: new Date(Date.now() + 15 * MINUTE),
     });
-  await sendMagicLinkEmail(email, token, next, t(c));
+  await sendMagicLinkEmail(email, token, next, { texts: t(c), locale: locale(c), updates: updatesOptIn });
 }
 
 export const authRoutes = new Hono<AppEnv>()
   .post('/magic-link', validJson(magicLinkSchema), async (c) => {
-    const { email, next } = c.req.valid('json');
+    const { email, next, updates } = c.req.valid('json');
     if (!(await mailsPerIp.hit(c, clientIp(c))) || !(await mailsPerAddress.hit(c, email))) return tooManyRequests(c);
     if (!(await mayLogIn(c.get('db'), email))) return c.json({ error: t(c).signupClosed }, 403);
-    await mailMagicLink(c, email, safeNextPath(next));
+    await mailMagicLink(c, email, safeNextPath(next), updates);
     return c.json({ ok: true });
   })
 
@@ -109,17 +117,17 @@ export const authRoutes = new Hono<AppEnv>()
           gt(magicLinks.expiresAt, new Date()),
         ),
       )
-      .returning({ email: magicLinks.email });
+      .returning({ email: magicLinks.email, updatesOptIn: magicLinks.updatesOptIn });
     if (!link) return c.json({ error: t(c).linkExpired }, 400);
 
-    const { user, token } = await startSession(db, link.email, SESSION_DAYS);
+    const { user, token } = await startSession(c, link.email, SESSION_DAYS, link.updatesOptIn);
     setSessionCookie(c, token);
     return c.json({ user });
   })
 
   // Mobile apps: a 6-digit code by mail instead of a link
   .post('/code', validJson(loginCodeSchema), async (c) => {
-    const { email } = c.req.valid('json');
+    const { email, updates } = c.req.valid('json');
     if (!(await mailsPerIp.hit(c, clientIp(c))) || !(await mailsPerAddress.hit(c, email))) return tooManyRequests(c);
     if (!(await mayLogIn(c.get('db'), email))) return c.json({ error: t(c).signupClosed }, 403);
 
@@ -130,9 +138,10 @@ export const authRoutes = new Hono<AppEnv>()
       .values({
         email,
         codeHash: hashToken(code),
+        updatesOptIn: updates ?? false,
         expiresAt: new Date(Date.now() + 15 * MINUTE),
       });
-    await sendLoginCodeEmail(email, code, t(c));
+    await sendLoginCodeEmail(email, code, { texts: t(c), locale: locale(c), updates: updates ?? false });
     return c.json({ ok: true });
   })
 
@@ -155,7 +164,7 @@ export const authRoutes = new Hono<AppEnv>()
           lt(loginCodes.attempts, CODE_ATTEMPTS),
         ),
       )
-      .returning({ id: loginCodes.id, codeHash: loginCodes.codeHash });
+      .returning({ id: loginCodes.id, codeHash: loginCodes.codeHash, updatesOptIn: loginCodes.updatesOptIn });
     const match = open.find((row) => row.codeHash === hashToken(code));
     if (!match) return c.json({ error: t(c).codeWrong }, 400);
 
@@ -166,7 +175,7 @@ export const authRoutes = new Hono<AppEnv>()
       .returning({ id: loginCodes.id });
     if (!used) return c.json({ error: t(c).codeWrong }, 400);
 
-    return c.json(await startSession(db, email, APP_SESSION_DAYS));
+    return c.json(await startSession(c, email, APP_SESSION_DAYS, match.updatesOptIn));
   })
 
   .post('/logout', async (c) => {
@@ -183,10 +192,18 @@ export const authRoutes = new Hono<AppEnv>()
   .get('/me', async (c) => c.json({ user: await currentUser(c) }))
 
   .patch('/me', requireAuth, validJson(updateMeSchema), async (c) => {
+    const { name, updates } = c.req.valid('json');
     const [user] = await c
       .get('db')
       .update(users)
-      .set({ name: c.req.valid('json').name, updatedAt: new Date() })
+      .set({
+        name,
+        ...(updates !== undefined && {
+          updatesConsentAt: updates ? consentNow : null,
+          locale: locale(c),
+        }),
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, c.get('user').id))
       .returning(userColumns);
     return c.json({ user: toUser(user!) });

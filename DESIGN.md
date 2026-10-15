@@ -130,6 +130,15 @@ Jedes Produkt hat in der Fußzeile den Absender „ein Werkzeug von“ und dahin
 
 Geteilte Links zeigen in WhatsApp, Signal und Co. ein Vorschaubild, 1200 × 630 px, eines pro Sprache. Dunkler Grund (`#0E0D12`), links die Kachel, rechts der Produktname in der Display-Schrift, darunter eine 4-px-Linie im Produktverlauf und die Tagline in Muted. Unten links steht der Absender wie in der Fußzeile, mit Wortmarke und Farbband. `bun run og-image` in `apps/web` rendert die Bilder aus `APP_NAME`, `APP_BAND`, `tagline` und der Kachel in `static/favicon.svg`. Sie liegen als `static/og-image-<sprache>.png`. Bringt eine Seite eigene Bilder mit, etwa ein Cover, nimmt sie das eigene statt des Vorschaubilds.
 
+## Mails
+
+Alle Mails einer App kommen aus einer Vorlage in `apps/api/src/lib/mail.ts`: heller Grund (Paper), darauf eine weiße Karte. Darüber stehen die Kachel (40 px) und der Produktname in der Display-Schrift, darunter die 4-px-Linie im Produktverlauf. Hauptknopf und Listenpunkte tragen den Verlauf, Links die deep-Mitte. Unten stehen der Grund der Mail und der Absender mit Farbband.
+
+- Tabellen und Inline-Styles, weil Gmail und Outlook kaum CSS lesen. Der Verlauf hat einen Vollton als Rückfall, die Linie besteht aus drei Zellen.
+- Die Kachel liegt als `static/mail-logo.png`, denn Mail-Programme zeigen kein SVG. `bun run og-image` rendert sie neu.
+- Bricolage lädt nur Apple Mail. Sonst greift Arial Narrow, die Kachel trägt die Marke.
+- Dark Mode über `prefers-color-scheme`: Grund `#0E0D12`, Karte `#16151B`. Jede Mail hat eine Textfassung.
+
 ## Pleasance als Dach
 
 Das Dach ist neutral und trägt alle Farben. Die 4-px-Linie unter dem Kopf zeigt das ganze Farbband. Bereiche mit eigener Farbe:

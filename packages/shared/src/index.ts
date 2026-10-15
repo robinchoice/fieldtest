@@ -14,8 +14,10 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  // In ADMIN_EMAILS, may invite testers
+  // In ADMIN_EMAILS, may invite testers and send updates
   admin: boolean;
+  // Since when the account gets update mails, as ISO date; null = off
+  updatesSince: string | null;
 };
 
 // Custom error messages are keys of messages.ts, the API translates them.
@@ -25,13 +27,16 @@ export const magicLinkSchema = z.object({
   email,
   // Page to return to after login, see safeNextPath
   next: z.string().max(2000).optional(),
+  // The unticked checkbox under the form. Counts once the link is opened, so
+  // it is a double opt-in.
+  updates: z.boolean().optional(),
 });
 
 export const verifySchema = z.object({
   token: z.string().min(1).max(200),
 });
 
-export const loginCodeSchema = z.object({ email });
+export const loginCodeSchema = z.object({ email, updates: z.boolean().optional() });
 
 export const inviteSchema = z.object({ email });
 
@@ -44,8 +49,44 @@ export const verifyCodeSchema = z.object({
 });
 
 export const updateMeSchema = z.object({
-  name: z.string().trim().min(1).max(255),
+  name: z.string().trim().min(1).max(255).optional(),
+  // Update mails on or off, see the settings page
+  updates: z.boolean().optional(),
 });
+
+// Update mails (README, „Update-Mails“): title and features per language.
+// Drafts may be incomplete, sending needs both languages, see updateComplete.
+const updateText = z.object({
+  title: z.string().trim().max(200),
+  features: z.array(z.string().trim().max(500)).max(20),
+});
+
+export const updateContentSchema = z.object({ de: updateText, en: updateText });
+
+export type UpdateContent = z.infer<typeof updateContentSchema>;
+
+export const updateComplete = (content: UpdateContent) =>
+  Object.values(content).every((text) => text.title && text.features.some(Boolean));
+
+export const saveUpdateSchema = z.object({
+  content: updateContentSchema,
+  // PNG or JPEG up to about 2 MB, null removes it, missing keeps it
+  image: z.base64().max(2_800_000).nullable().optional(),
+});
+
+export type UpdateSummary = {
+  id: string;
+  // File name in updates/ for drafts written by agents
+  slug: string | null;
+  content: UpdateContent;
+  hasImage: boolean;
+  createdAt: string;
+  sentAt: string | null;
+  // Deliveries of a sent update
+  sent: number;
+  failed: number;
+  pending: number;
+};
 
 // A path on this site to return to after login. Anything that would resolve to
 // another origin (//host, /\host, or tabs and newlines that browsers strip) is

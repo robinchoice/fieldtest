@@ -1,6 +1,7 @@
 // Renders the link preview that WhatsApp, Signal and co. show for shared links,
 // 1200×630 per language into static/og-image-<locale>.png (see DESIGN.md,
-// "Vorschaubild"). Rerun after changing APP_NAME, APP_BAND, the tagline or the
+// "Vorschaubild"), and the tile as static/mail-logo.png for the mails, which
+// show no SVG. Rerun after changing APP_NAME, APP_BAND, the tagline or the
 // tile in static/favicon.svg, and commit the pictures.
 // Run: bun run og-image
 import { readFileSync } from 'node:fs';
@@ -66,6 +67,14 @@ try {
     await page.screenshot({ path: new URL(file, STATIC).pathname });
     console.log(file);
   }
+
+  // 40 px in the mail, twice that for sharp screens
+  const tile = await browser.newPage({ viewport: { width: 80, height: 80 } });
+  await tile.setContent(
+    `<style>body{margin:0}img{display:block;width:80px;height:80px}</style><img src="${dataUrl('favicon.svg', 'image/svg+xml')}">`,
+  );
+  await tile.screenshot({ path: new URL('mail-logo.png', STATIC).pathname, omitBackground: true });
+  console.log('mail-logo.png');
 } finally {
   await browser.close();
 }

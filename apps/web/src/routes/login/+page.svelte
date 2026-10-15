@@ -12,6 +12,8 @@
   const next = safeNextPath(page.url.searchParams.get('next'));
 
   let email = $state('');
+  // Unticked: update mails are opt-in, see README „Update-Mails“
+  let updates = $state(false);
   let sent = $state(false);
   let loading = $state(false);
 
@@ -24,7 +26,7 @@
     e.preventDefault();
     loading = true;
     try {
-      await sendMagicLink(email, next);
+      await sendMagicLink(email, next, updates);
       sent = true;
     } catch {
       // The API client already shows the error as a toast
@@ -44,6 +46,10 @@
     <form onsubmit={submit}>
       <p>{t().linkIntro}</p>
       <Input type="email" label={t().email} placeholder={t().emailPlaceholder} bind:value={email} required />
+      <label class="check">
+        <input type="checkbox" bind:checked={updates} />
+        <span>{t().updatesOptIn}</span>
+      </label>
       <Button type="submit" {loading}>{t().sendLink}</Button>
     </form>
   {/if}
@@ -77,5 +83,19 @@
   form p {
     margin: 0;
     color: var(--muted);
+  }
+  .check {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    font-size: 0.92rem;
+    cursor: pointer;
+  }
+  .check input {
+    width: 18px;
+    height: 18px;
+    margin: 2px 0 0;
+    flex: none;
+    accent-color: var(--accent);
   }
 </style>

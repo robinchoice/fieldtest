@@ -9,8 +9,9 @@ export async function checkAuth() {
   auth.user = (await api.get<{ user: User | null }>('/auth/me', true).catch(() => ({ user: null }))).user;
 }
 
-export function sendMagicLink(email: string, next: string | null) {
-  return api.post('/auth/magic-link', { email, next: next ?? undefined });
+// updates: the unticked checkbox for update mails, counts once the link is opened
+export function sendMagicLink(email: string, next: string | null, updates: boolean) {
+  return api.post('/auth/magic-link', { email, next: next ?? undefined, updates });
 }
 
 // Silent: the verify page shows the error itself
@@ -25,6 +26,10 @@ export async function logout() {
 
 export async function updateName(name: string) {
   auth.user = (await api.patch<{ user: User }>('/auth/me', { name })).user;
+}
+
+export async function setUpdates(updates: boolean) {
+  auth.user = (await api.patch<{ user: User }>('/auth/me', { updates })).user;
 }
 
 export function invite(email: string) {

@@ -12,12 +12,19 @@ export const SESSION_COOKIE = 'session';
 export const SESSION_DAYS = 30;
 const DAY = 24 * 60 * 60 * 1000;
 
-export const userColumns = { id: users.id, email: users.email, name: users.name };
-export const toUser = ({ id, email, name }: Pick<User, 'id' | 'email' | 'name'>) => ({
+export const userColumns = {
+  id: users.id,
+  email: users.email,
+  name: users.name,
+  updatesConsentAt: users.updatesConsentAt,
+};
+type UserRow = Pick<User, 'id' | 'email' | 'name'> & { updatesConsentAt: Date | null };
+export const toUser = ({ id, email, name, updatesConsentAt }: UserRow): User => ({
   id,
   email,
   name,
   admin: isAdmin(email),
+  updatesSince: updatesConsentAt?.toISOString() ?? null,
 });
 
 export function generateToken() {

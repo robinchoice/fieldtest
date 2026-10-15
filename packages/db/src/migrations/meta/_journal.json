@@ -43,6 +43,13 @@
       "when": 1791848706366,
       "tag": "0005_evaluation_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792103044780,
+      "tag": "0006_update_mails",
+      "breakpoints": true
     }
   ]
 }

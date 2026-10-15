@@ -11,6 +11,7 @@ import { reportRoutes } from './routes/reports';
 import { roundRoutes } from './routes/rounds';
 import { runnerRoutes } from './routes/runner';
 import { sdkRoutes } from './routes/sdk';
+import { updateRoutes } from './routes/updates';
 import type { AppEnv } from './types';
 
 export function createApp(db: Database) {
@@ -42,5 +43,6 @@ export function createApp(db: Database) {
       .route('/rounds', roundRoutes)
       .route('/runner', runnerRoutes)
       .route('/sdk', sdkRoutes)
+      .route('/updates', updateRoutes)
   );
 }

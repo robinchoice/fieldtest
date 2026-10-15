@@ -1,11 +1,31 @@
-import type { Rewards } from '@app/shared';
-import { index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import type { Rewards, UpdateContent } from '@app/shared';
+import {
+  boolean,
+  customType,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
+
+const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   // Stored lowercase, see the email schema in @app/shared
   email: varchar('email', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
+  // Opt-in for update mails, null = off. The time is the proof of consent.
+  updatesConsentAt: timestamp('updates_consent_at'),
+  // Language of the update mails, taken at login and when switching them on
+  locale: varchar('locale', { length: 5 }).default('de').notNull(),
+  // Key of the unsubscribe link in update mails, works without login
+  unsubscribeToken: uuid('unsubscribe_token').defaultRandom().notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -14,6 +34,8 @@ export const magicLinks = pgTable('magic_links', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 255 }).notNull(),
   tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+  // Ticked "send me updates", applied when the link is opened
+  updatesOptIn: boolean('updates_opt_in').default(false).notNull(),
   expiresAt: timestamp('expires_at').notNull(),
   usedAt: timestamp('used_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -24,6 +46,7 @@ export const loginCodes = pgTable('login_codes', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 255 }).notNull(),
   codeHash: varchar('code_hash', { length: 64 }).notNull(),
+  updatesOptIn: boolean('updates_opt_in').default(false).notNull(),
   attempts: integer('attempts').default(0).notNull(),
   expiresAt: timestamp('expires_at').notNull(),
   usedAt: timestamp('used_at'),
@@ -218,3 +241,36 @@ export const evaluationJobs = pgTable('evaluation_jobs', {
   runAt: timestamp('run_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// Update mails, see README „Update-Mails“. Drafts from updates/<slug>.md carry
+// the slug, sentAt marks the moment Robin sent it.
+export const updates = pgTable('updates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  slug: varchar('slug', { length: 200 }).unique(),
+  content: jsonb('content').$type<UpdateContent>().notNull(),
+  image: bytea('image'),
+  sentAt: timestamp('sent_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// One row per recipient of a sent update, the worker works through the pending ones
+export const updateDeliveries = pgTable(
+  'update_deliveries',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    updateId: uuid('update_id')
+      .references(() => updates.id, { onDelete: 'cascade' })
+      .notNull(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    // pending, sent, failed, or skipped when the user unsubscribed in between
+    status: varchar('status', { length: 10 }).default('pending').notNull(),
+    attempts: integer('attempts').default(0).notNull(),
+    // Last try, the send time once sent. Paces all workers together.
+    attemptedAt: timestamp('attempted_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [unique().on(table.updateId, table.userId)],
+);

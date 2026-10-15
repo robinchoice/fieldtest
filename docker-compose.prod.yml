@@ -33,12 +33,20 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Evaluates tester reports with Claude (apps/api/src/worker.ts)
+  # Background jobs from the API image (apps/api/src/worker.ts): evaluates tester
+  # reports with Claude and sends update mails. Starts once the API has migrated the database.
   worker:
     image: ${IMAGE_PREFIX:?IMAGE_PREFIX is required}-api:${IMAGE_TAG:?IMAGE_TAG is required}
     command: ["bun", "apps/api/src/worker.ts"]
     environment:
       - DATABASE_URL=postgresql://app:${POSTGRES_PASSWORD}@postgres:5432/app
+      - APP_URL=${APP_URL}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - UPDATE_MAIL_INTERVAL_MS=${UPDATE_MAIL_INTERVAL_MS:-6000}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - PORT=3001

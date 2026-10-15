@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --env-file=../../.env --hot src/index.ts",
+    "worker": "bun --env-file=../../.env --hot src/worker.ts",
     "test": "bun test --env-file=../../.env",
     "check": "tsc --noEmit"
   },
