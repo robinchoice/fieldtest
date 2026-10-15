@@ -8,7 +8,6 @@ services:
       - API_INTERNAL_URL=http://api:3000
       - ORIGIN=${APP_URL}
       - PUBLIC_SENTRY_DSN=${PUBLIC_SENTRY_DSN:-}
-      - PUBLIC_SENTRY_ENVIRONMENT=production
       - SENTRY_DSN=${SENTRY_DSN:-}
     depends_on:
       api:

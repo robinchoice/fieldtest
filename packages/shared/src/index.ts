@@ -54,7 +54,9 @@ export function safeNextPath(value: string | null | undefined): string | null {
   if (!value?.startsWith('/')) return null;
   try {
     const url = new URL(value, 'http://localhost');
-    return url.origin === 'http://localhost' ? url.pathname + url.search + url.hash : null;
+    return url.origin === 'http://localhost' && !url.pathname.startsWith('//')
+      ? url.pathname + url.search + url.hash
+      : null;
   } catch {
     return null;
   }

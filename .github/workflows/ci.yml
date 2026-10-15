@@ -98,6 +98,8 @@ jobs:
           push: true
           platforms: linux/arm64
           provenance: false
+          build-args: |
+            APP_VERSION=${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

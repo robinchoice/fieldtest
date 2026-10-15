@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/bun';
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
-  release: process.env.SENTRY_RELEASE,
+  release: process.env.APP_VERSION,
   dataCollection: {
     userInfo: false,
     cookies: false,
