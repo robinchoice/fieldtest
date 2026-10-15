@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
 import { t } from './lib/i18n';
 import { captureException } from './monitoring';
+import { agentRoutes } from './routes/agents';
 import { authRoutes } from './routes/auth';
 import { reportRoutes } from './routes/reports';
 import { roundRoutes } from './routes/rounds';
@@ -33,6 +34,8 @@ export function createApp(db: Database) {
         await db.execute(sql`select 1`);
         return c.json({ status: 'ok', revision: process.env.APP_VERSION || 'dev' });
       })
+      // /llms.txt, /llms-full.txt and <page>.md, forwarded by the web server
+      .route('/', agentRoutes)
       .basePath('/api/v1')
       .route('/auth', authRoutes)
       .route('/reports', reportRoutes)

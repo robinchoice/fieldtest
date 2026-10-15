@@ -64,6 +64,10 @@ const de = {
   close: 'Schließen',
   cancel: 'Abbrechen',
   madeBy: 'ein Werkzeug von',
+  // For agents: llms.txt, see apps/api/src/routes/agents.ts
+  agentsIntro: (full: string) =>
+    `Nur öffentliche Inhalte. Jede Seite gibt es auch als Markdown: \`.md\` an die URL hängen, für die Startseite \`/index.md\`. Alles in einer Datei: ${full}`,
+  agentsPages: 'Seiten',
   // Label of the language button, in the language it switches to
   otherLanguage: 'English',
 
@@ -290,6 +294,9 @@ const en: Messages = {
   close: 'Close',
   cancel: 'Cancel',
   madeBy: 'a tool by',
+  agentsIntro: (full) =>
+    `Public content only. Every page is also available as Markdown: append \`.md\` to its URL, \`/index.md\` for the start page. Everything in one file: ${full}`,
+  agentsPages: 'Pages',
   otherLanguage: 'Deutsch',
 
   roundsTitle: 'Test rounds',

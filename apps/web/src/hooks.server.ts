@@ -13,6 +13,9 @@ dns.setDefaultResultOrder('ipv4first');
 // proxy does the same for the browser, fetches in server loads land here.
 const API_ORIGIN = process.env.API_INTERNAL_URL || (dev ? 'http://localhost:3000' : 'http://api:3000');
 
+// Public content for agents comes from the API, see apps/api/src/routes/agents.ts
+const AGENT_PATH = /^\/llms(-full)?\.txt$|\.md$/;
+
 // The CSP comes from svelte.config.js. Browsers ignore HSTS over plain HTTP,
 // so it is harmless in dev.
 const SECURITY_HEADERS = {
@@ -25,20 +28,30 @@ export const handle: Handle = async ({ event, resolve }) => {
   // The language chosen with the button, else the browser's
   const locale = pickLocale(event.cookies.get('locale') ?? event.request.headers.get('accept-language'));
   event.locals.locale = locale;
-  const response = event.url.pathname.startsWith('/api/')
-    ? await proxyToApi(event.request, event.url)
-    : await resolve(event, {
-        transformPageChunk: ({ html }) => html.replace('<html lang="de">', `<html lang="${locale}">`),
-      });
+  const response =
+    event.url.pathname.startsWith('/api/') || AGENT_PATH.test(event.url.pathname)
+      ? await proxyToApi(event.request, `${API_ORIGIN}${event.url.pathname}${event.url.search}`)
+      : ((await markdown(event.request, event.url)) ??
+        (await resolve(event, {
+          transformPageChunk: ({ html }) => html.replace('<html lang="de">', `<html lang="${locale}">`),
+        })));
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.headers.set(name, value);
   return response;
 };
 
-async function proxyToApi(request: Request, url: URL) {
+// Agents that ask for Markdown get a public page as its .md, all others the HTML
+async function markdown(request: Request, url: URL) {
+  if (request.method !== 'GET' || !request.headers.get('accept')?.includes('text/markdown')) return;
+  const path = url.pathname === '/' ? '/index.md' : `${url.pathname.replace(/\/$/, '')}.md`;
+  const response = await proxyToApi(request, `${API_ORIGIN}${path}${url.search}`);
+  if (response.ok) return response;
+}
+
+async function proxyToApi(request: Request, target: string) {
   const headers = new Headers(request.headers);
   headers.delete('host');
 
-  const res = await fetch(`${API_ORIGIN}${url.pathname}${url.search}`, {
+  const res = await fetch(target, {
     method: request.method,
     headers,
     body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,

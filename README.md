@@ -64,6 +64,17 @@ Optional: `MAX_PER_CLAIM` (Standard 10.000 Sats), `MAX_PER_TESTER_DAY` (50.000),
 
 Der Runner ruft nur öffentliche Hostnamen auf, damit eine präparierte Lightning-Adresse ihn nicht ins Netz des Owners lenken kann.
 
+## Für Agenten
+
+Fremde Agenten lesen die öffentlichen Inhalte ohne HTML, nach [llms.txt](https://llmstxt.org). Quelle ist `publicPages` in `apps/api/src/lib/public-pages.ts`, die Routen stehen in `apps/api/src/routes/agents.ts`. Der Web-Server leitet die Pfade an die API weiter.
+
+- `/llms.txt`: Einstieg mit Name, Tagline und allen öffentlichen Seiten als Links auf ihr Markdown.
+- `/llms-full.txt`: alle Seiten in einer Datei.
+- `<seite>.md`: jede Seite als Markdown, die Startseite als `/index.md`. Fragt ein Agent mit `Accept: text/markdown` nach einer Seite, die es als Markdown gibt, bekommt er unter derselben URL gleich das Markdown, alle anderen das HTML.
+- Sprache: `?lang=de|en`, sonst `Accept-Language`, sonst Deutsch. Links behalten ein `?lang=`.
+- Nur öffentliche Inhalte. Geteilte Berichte unter `/r/<token>` gehören nicht dazu, sie sind nur mit dem Link erreichbar.
+- Ausprobieren: `curl localhost:5173/llms.txt` bei laufendem `bun run dev`.
+
 ## Deploy auf Coolify
 
 Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional und geht nur an den Service `worker`. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
