@@ -15,9 +15,9 @@
     "@hono/zod-validator": "^0.9.1",
     "@sentry/bun": "^11.4.0",
     "drizzle-orm": "^0.45.3",
-    "hono": "^4.13.12",
+    "hono": "^4.13.13",
     "light-bolt11-decoder": "^3.2.0",
-    "nodemailer": "^10.0.13",
+    "nodemailer": "^10.0.15",
     "zod": "^4.6.5"
   },
   "devDependencies": {
