@@ -1,18 +1,12 @@
 <script lang="ts">
   import { APP_NAME } from '@app/shared';
-  import { page } from '$app/state';
   import { auth, setUpdates } from '$lib/auth.svelte';
-  import { t } from '$lib/i18n';
+  import { date, t } from '$lib/i18n';
   import { toast } from '$lib/toast.svelte';
 
   let busy = $state(false);
   const on = $derived(!!auth.user?.updatesSince);
-  const since = $derived(
-    auth.user?.updatesSince &&
-      new Date(auth.user.updatesSince).toLocaleDateString(page.data.locale === 'de' ? 'de-DE' : 'en-GB', {
-        dateStyle: 'long',
-      }),
-  );
+  const since = $derived(auth.user?.updatesSince && date(auth.user.updatesSince, { dateStyle: 'long' }));
 
   // Saves right away, the toast confirms it
   async function toggle() {

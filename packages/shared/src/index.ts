@@ -29,14 +29,14 @@ export const magicLinkSchema = z.object({
   next: z.string().max(2000).optional(),
   // The unticked checkbox under the form. Counts once the link is opened, so
   // it is a double opt-in.
-  updates: z.boolean().optional(),
+  updates: z.boolean().default(false),
 });
 
 export const verifySchema = z.object({
   token: z.string().min(1).max(200),
 });
 
-export const loginCodeSchema = z.object({ email, updates: z.boolean().optional() });
+export const loginCodeSchema = z.object({ email, updates: z.boolean().default(false) });
 
 export const inviteSchema = z.object({ email });
 

@@ -17,6 +17,7 @@ import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
 import { mayLogIn } from '../lib/signup';
 import { validJson } from '../lib/validate';
 import {
+  consentNow,
   currentUser,
   generateToken,
   hashToken,
@@ -38,9 +39,6 @@ const CODE_ATTEMPTS = 5;
 const mailsPerAddress = rateLimit('mails-per-address', 5, 60 * MINUTE);
 const mailsPerIp = rateLimit('mails-per-ip', 20, 60 * MINUTE);
 const codeChecksPerIp = rateLimit('code-checks-per-ip', 30, 15 * MINUTE);
-
-// Switching update mails on keeps the time of the first consent as proof
-export const consentNow = sql`coalesce(${users.updatesConsentAt}, now())`;
 
 // The first login creates the account, /magic-link and /code only send one
 // to addresses that may sign up. Every login refreshes the language of the
@@ -65,7 +63,7 @@ async function startSession(c: Context<AppEnv>, email: string, days: number, upd
   return { user: toUser(user!), token };
 }
 
-async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | null, updatesOptIn = false) {
+async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | null, updatesOptIn: boolean) {
   const token = generateToken();
   await c
     .get('db')
@@ -76,7 +74,7 @@ async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | n
       updatesOptIn,
       expiresAt: new Date(Date.now() + 15 * MINUTE),
     });
-  await sendMagicLinkEmail(email, token, next, { texts: t(c), locale: locale(c), updates: updatesOptIn });
+  await sendMagicLinkEmail(email, token, next, { locale: locale(c), updates: updatesOptIn });
 }
 
 export const authRoutes = new Hono<AppEnv>()
@@ -98,7 +96,7 @@ export const authRoutes = new Hono<AppEnv>()
       .insert(users)
       .values({ email, name: email.split('@')[0]! })
       .onConflictDoNothing();
-    await mailMagicLink(c, email, null);
+    await mailMagicLink(c, email, null, false);
     return c.json({ ok: true });
   })
 
@@ -138,10 +136,10 @@ export const authRoutes = new Hono<AppEnv>()
       .values({
         email,
         codeHash: hashToken(code),
-        updatesOptIn: updates ?? false,
+        updatesOptIn: updates,
         expiresAt: new Date(Date.now() + 15 * MINUTE),
       });
-    await sendLoginCodeEmail(email, code, { texts: t(c), locale: locale(c), updates: updates ?? false });
+    await sendLoginCodeEmail(email, code, { locale: locale(c), updates });
     return c.json({ ok: true });
   })
 

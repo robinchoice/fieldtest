@@ -572,6 +572,8 @@ export const messages = { de, en };
 
 export type Locale = keyof typeof messages;
 
+export const DATE_LOCALE: Record<Locale, string> = { de: 'de-DE', en: 'en-GB' };
+
 // The first language from a saved choice or an Accept-Language header that we
 // speak, else German. Browsers list their languages by preference.
 export function pickLocale(value: string | null | undefined): Locale {

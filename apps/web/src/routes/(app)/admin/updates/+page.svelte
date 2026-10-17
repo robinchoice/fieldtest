@@ -6,7 +6,7 @@
   import { auth } from '$lib/auth.svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import { t } from '$lib/i18n';
+  import { date, t } from '$lib/i18n';
   import { toast } from '$lib/toast.svelte';
 
   // Agents write drafts as updates/<slug>.md, the API imports them on start.
@@ -31,11 +31,6 @@
     de: { title: title.de, features: features.de.split('\n').map((line) => line.trim()).filter(Boolean) },
     en: { title: title.en, features: features.en.split('\n').map((line) => line.trim()).filter(Boolean) },
   });
-  const date = (iso: string) =>
-    new Date(iso).toLocaleString(page.data.locale === 'de' ? 'de-DE' : 'en-GB', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
 
   async function load() {
     const res = await api.get<{ updates: UpdateSummary[]; subscribers: number }>('/updates');

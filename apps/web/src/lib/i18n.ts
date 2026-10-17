@@ -1,4 +1,4 @@
-import { type Locale, messages } from '@app/shared';
+import { DATE_LOCALE, type Locale, messages } from '@app/shared';
 import { invalidateAll } from '$app/navigation';
 import { page } from '$app/state';
 
@@ -16,6 +16,11 @@ export async function setLocale(locale: Locale) {
 const NUMBER_LOCALE = { de: 'de-DE', en: 'en-US' };
 
 export const sats = (n: number) => n.toLocaleString(NUMBER_LOCALE[page.data.locale ?? 'de']);
+
+export const date = (
+  value: string | Date,
+  options: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' },
+) => new Date(value).toLocaleString(DATE_LOCALE[page.data.locale ?? 'de'], options);
 
 // "in 31 hours", "4 minutes ago"
 export function relative(date: string | Date) {

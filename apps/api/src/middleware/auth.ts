@@ -1,6 +1,6 @@
 import { sessions, users } from '@app/db';
 import type { User } from '@app/shared';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
@@ -11,6 +11,9 @@ import type { AppEnv } from '../types';
 export const SESSION_COOKIE = 'session';
 export const SESSION_DAYS = 30;
 const DAY = 24 * 60 * 60 * 1000;
+
+// Switching update mails on keeps the time of the first consent as proof
+export const consentNow = sql`coalesce(${users.updatesConsentAt}, now())`;
 
 export const userColumns = {
   id: users.id,

@@ -1,9 +1,11 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { defineConfig, devices } from '@playwright/test';
 
 // The tests write to DATABASE_URL like the API tests. The CI sets it directly.
 const envFile = new URL('../../.env', import.meta.url);
-if (existsSync(envFile)) process.loadEnvFile(envFile);
+const databaseUrl = existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8')).DATABASE_URL : undefined;
+if (databaseUrl) process.env.DATABASE_URL ??= databaseUrl;
 
 // Own ports and fresh servers, so the tests never run against the dev server of another
 // worktree or project. Worktrees testing at the same time pick other ports via

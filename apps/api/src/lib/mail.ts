@@ -2,6 +2,7 @@ import {
   APP_BAND,
   APP_NAME,
   bandColor,
+  DATE_LOCALE,
   DEEP,
   GLOW,
   type Locale,
@@ -17,6 +18,9 @@ const port = Number(process.env.SMTP_PORT || 587);
 // In production the log would hand out login links, so the boot aborts.
 if (!process.env.SMTP_HOST && process.env.NODE_ENV === 'production') {
   throw new Error('SMTP_HOST is required in production, otherwise login links would end up in the log');
+}
+if (!process.env.APP_URL && process.env.NODE_ENV === 'production') {
+  throw new Error('APP_URL is required in production');
 }
 
 const transport = process.env.SMTP_HOST
@@ -130,14 +134,10 @@ const optIn = (texts: Messages, updates: boolean) =>
     : '';
 const optInText = (texts: Messages, updates: boolean) => (updates ? `\n\n${texts.optInNote(APP_NAME)}` : '');
 
-type Login = { texts: Messages; locale: Locale; updates: boolean };
+type Login = { locale: Locale; updates: boolean };
 
-export function sendMagicLinkEmail(
-  email: string,
-  token: string,
-  next: string | null,
-  { texts, locale, updates }: Login,
-) {
+export function sendMagicLinkEmail(email: string, token: string, next: string | null, { locale, updates }: Login) {
+  const texts = messages[locale];
   const url = `${process.env.APP_URL}/auth/verify?token=${token}${next ? `&next=${encodeURIComponent(next)}` : ''}`;
   return sendMail({
     to: email,
@@ -153,7 +153,8 @@ export function sendMagicLinkEmail(
   });
 }
 
-export function sendLoginCodeEmail(email: string, code: string, { texts, locale, updates }: Login) {
+export function sendLoginCodeEmail(email: string, code: string, { locale, updates }: Login) {
+  const texts = messages[locale];
   return sendMail({
     to: email,
     subject: texts.codeSubject(code, APP_NAME),
@@ -183,7 +184,7 @@ export function updateMail({ id, content, hasImage, date }: UpdateMail, locale: 
   const texts = messages[locale];
   const { title, features } = content[locale];
   const items = features.filter(Boolean);
-  const day = new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'long' }).format(date);
+  const day = new Intl.DateTimeFormat(DATE_LOCALE[locale], { dateStyle: 'long' }).format(date);
   const unsubscribePage = `${url}/unsubscribe?token=${unsubscribeToken}`;
   const settings = `${url}/settings`;
 

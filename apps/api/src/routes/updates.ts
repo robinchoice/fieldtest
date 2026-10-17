@@ -2,13 +2,14 @@ import { updateDeliveries, updates, users } from '@app/db';
 import { type Locale, saveUpdateSchema, type UpdateSummary, updateComplete } from '@app/shared';
 import { and, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { t } from '../lib/i18n';
 import { imageType, UUID } from '../lib/image';
 import { sendMail, updateMail } from '../lib/mail';
 import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
 import { redact } from '../lib/updates';
 import { validJson } from '../lib/validate';
-import { requireAdmin, requireAuth } from '../middleware/auth';
+import { consentNow, requireAdmin, requireAuth } from '../middleware/auth';
 import type { AppEnv } from '../types';
 
 const HOUR = 60 * 60 * 1000;
@@ -62,17 +63,23 @@ async function forAdmin(c: Context<AppEnv>) {
   const id = c.req.param('id')!;
   if (!UUID.test(id)) return null;
   const db = c.get('db');
-  const [update] = await db
-    .select({ id: updates.id, content: updates.content, image: updates.image, sentAt: updates.sentAt })
-    .from(updates)
-    .where(eq(updates.id, id));
+  const [[update], [user]] = await Promise.all([
+    db
+      .select({
+        content: updates.content,
+        hasImage: sql<boolean>`${updates.image} is not null`,
+        sentAt: updates.sentAt,
+      })
+      .from(updates)
+      .where(eq(updates.id, id)),
+    db
+      .select({ email: users.email, token: users.unsubscribeToken })
+      .from(users)
+      .where(eq(users.id, c.get('user').id)),
+  ]);
   if (!update) return null;
-  const [user] = await db
-    .select({ email: users.email, token: users.unsubscribeToken })
-    .from(users)
-    .where(eq(users.id, c.get('user').id));
   return {
-    update: { id, content: update.content, hasImage: !!update.image, date: update.sentAt ?? new Date() },
+    update: { id, content: update.content, hasImage: update.hasImage, date: update.sentAt ?? new Date() },
     user: user!,
   };
 }
@@ -89,7 +96,7 @@ async function setConsent(c: Context<AppEnv>, on: boolean) {
   const [user] = await c
     .get('db')
     .update(users)
-    .set({ updatesConsentAt: on ? sql`coalesce(${users.updatesConsentAt}, now())` : null, updatedAt: new Date() })
+    .set({ updatesConsentAt: on ? consentNow : null, updatedAt: new Date() })
     .where(eq(users.id, recipient.id))
     .returning({ id: users.id });
   if (!user) return c.json({ error: t(c).unsubscribeInvalid }, 400);
@@ -198,24 +205,22 @@ export const updateRoutes = new Hono<AppEnv>()
   // (worker.ts). Marking it sent first makes a double click harmless.
   .post('/:id/send', requireAuth, requireAdmin, async (c) => {
     if (!(await sendsPerUser.hit(c, c.get('user').id))) return tooManyRequests(c);
-    const found = await forAdmin(c);
-    if (!found) return c.json({ error: t(c).notFound }, 404);
+    const id = c.req.param('id');
+    if (!UUID.test(id)) return c.json({ error: t(c).notFound }, 404);
     // Checked on the locked row, so a save from another tab can't slip in between
-    const id = found.update.id;
-    const error = await c.get('db').transaction(async (tx) => {
+    await c.get('db').transaction(async (tx) => {
       const [row] = await tx
         .select({ content: updates.content, sentAt: updates.sentAt })
         .from(updates)
         .where(eq(updates.id, id))
         .for('update');
-      if (!row || row.sentAt) return 'updateAlreadySent' as const;
-      if (!updateComplete(row.content)) return 'updateIncomplete' as const;
+      if (!row) throw new HTTPException(404, { message: t(c).notFound });
+      if (row.sentAt) throw new HTTPException(409, { message: t(c).updateAlreadySent });
+      if (!updateComplete(row.content)) throw new HTTPException(400, { message: t(c).updateIncomplete });
       await tx.update(updates).set({ sentAt: new Date() }).where(eq(updates.id, id));
       await tx.execute(
         sql`insert into ${updateDeliveries} (update_id, user_id) select ${id}::uuid, id from ${users} where updates_consent_at is not null`,
       );
-      return null;
     });
-    if (error) return c.json({ error: t(c)[error] }, error === 'updateIncomplete' ? 400 : 409);
     return c.json({ update: (await summaries(c, id))[0] });
   });
