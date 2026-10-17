@@ -223,8 +223,8 @@ const de = {
   sharedReport: 'Geteilter Bericht',
 
   // Web: payouts
-  payoutsIntro: (limit: string) =>
-    `Dein Runner zahlt freigegebene Auszahlungen aus deiner eigenen Wallet. Bis ${limit} Sats gibt Fieldtest automatisch frei.`,
+  payoutsIntro: (limit: string, perTester: string) =>
+    `Dein Runner zahlt freigegebene Auszahlungen aus deiner eigenen Wallet. Bis ${limit} Sats gibt Fieldtest automatisch frei, pro Tester und Runde zusammen bis ${perTester} Sats.`,
   needsDecision: 'Wartet auf deine Entscheidung',
   noDecisions: 'Nichts zu entscheiden. Auszahlungen über deiner Grenze landen hier.',
   approve: 'Freigeben',
@@ -274,6 +274,7 @@ const de = {
     idea: 'Nützliche Idee',
     confirm: 'Bestätigung',
     autoApprove: 'Automatisch freigeben bis',
+    autoApproveTester: 'Automatisch pro Tester und Runde bis',
     scale: 'Alles skalieren (%)',
   },
   estimate: (session: string, round: string) =>
@@ -503,8 +504,8 @@ const en: Messages = {
   shareHint: 'The link shows this report without tester names.',
   sharedReport: 'Shared report',
 
-  payoutsIntro: (limit) =>
-    `Your runner pays approved payouts from your own wallet. Fieldtest approves up to ${limit} sats automatically.`,
+  payoutsIntro: (limit, perTester) =>
+    `Your runner pays approved payouts from your own wallet. Fieldtest approves up to ${limit} sats automatically, up to ${perTester} sats per tester and round in total.`,
   needsDecision: 'Waiting for your decision',
   noDecisions: 'Nothing to decide. Payouts above your limit show up here.',
   approve: 'Approve',
@@ -552,6 +553,7 @@ const en: Messages = {
     idea: 'Useful idea',
     confirm: 'Confirmation',
     autoApprove: 'Approve automatically up to',
+    autoApproveTester: 'Approve automatically per tester and round up to',
     scale: 'Scale everything (%)',
   },
   estimate: (session, round) =>

@@ -44,7 +44,7 @@
 </script>
 
 {#if claims}
-  <p class="intro">{t().payoutsIntro(sats(current.detail?.round.rewards.autoApprove ?? 0))}</p>
+  <p class="intro">{t().payoutsIntro(sats(current.detail?.round.rewards.autoApprove ?? 0), sats(current.detail?.round.rewards.autoApproveTester ?? 0))}</p>
 
   <section class="block">
     <h2>{t().needsDecision}</h2>

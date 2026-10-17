@@ -67,9 +67,23 @@ async function countApprovedSession(db: Database, sessionId: string | null) {
     .where(eq(testers.id, session.testerId));
 }
 
-function decision(amount: number, rewards: Rewards) {
+// Claims wait for the owner above the limit per claim, and once the tester's finding
+// rewards in this round would pass the limit per tester. So no evaluation alone pays
+// out more than that, however many reports a tester sends.
+async function decision(db: Database, roundId: string, testerId: string, amount: number, rewards: Rewards) {
+  const [row] = await db
+    .select({ total: sql<number>`coalesce(sum(${claims.amountSats}), 0)::int` })
+    .from(claims)
+    .where(
+      and(
+        eq(claims.roundId, roundId),
+        eq(claims.testerId, testerId),
+        inArray(claims.kind, ['finding', 'confirm']),
+        inArray(claims.status, ['approved', 'paying', 'paid']),
+      ),
+    );
   const now = new Date();
-  return amount > rewards.autoApprove
+  return amount > rewards.autoApprove || row!.total + amount > rewards.autoApproveTester
     ? { status: 'review', approveAt: new Date(now.getTime() + REVIEW_HOURS * HOUR), approvedAt: null }
     : { status: 'approved', approveAt: null, approvedAt: now };
 }
@@ -121,7 +135,7 @@ export async function settleFinding(db: Database, findingId: string) {
     const multiplier = first ? report.reputation : 100;
     const amount = Math.round((base * multiplier) / 100);
     if (amount <= 0) continue;
-    const state = decision(amount, finding.rewards);
+    const state = await decision(db, finding.roundId, report.testerId, amount, finding.rewards);
     await db.insert(claims).values({
       roundId: finding.roundId,
       testerId: report.testerId,

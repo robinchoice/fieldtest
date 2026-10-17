@@ -357,6 +357,40 @@ test('reports the session does not back up wait for the owner', async () => {
   expect(ledger.claims).toEqual([]);
 });
 
+test('grounded reports of one tester wait for the owner beyond the limit per tester and round', async () => {
+  const owner = await login();
+  const round = await newRound(owner);
+  await call('PATCH', `/rounds/${round.id}`, { rewards: { ...round.rewards, autoApproveTester: 1000 } }, owner);
+  const lightningAddress = tester();
+  const evaluate = async () => {
+    const token = await startSession(round.inviteToken, lightningAddress);
+    const text = `Broken ${crypto.randomUUID()}`;
+    await call(
+      'POST',
+      '/sdk/session/feedback',
+      { type: 'bug', text, anchor: { label: 'x', screen: '/' } },
+      bearer(token),
+    );
+    const [row] = await db.select().from(feedback).where(eq(feedback.text, text));
+    await evaluateFeedback(db, row!.id, async () => ({
+      duplicateOf: null,
+      severity: 'major',
+      grounded: true,
+      title: text,
+      summary: '',
+      fix: '',
+    }));
+  };
+  // Major 1500 → 750 for a new tester: the first fits the limit of 1000, the second would pass it
+  await evaluate();
+  await evaluate();
+  const [, ledger] = await call('GET', `/rounds/${round.id}/claims`, undefined, owner);
+  expect(ledger.claims.map((c: Json) => [c.amount, c.status]).sort()).toEqual([
+    [750, 'approved'],
+    [750, 'review'],
+  ]);
+});
+
 test('the worker evaluates reports and takes up jobs left behind again', async () => {
   const owner = await login();
   const round = await newRound(owner);

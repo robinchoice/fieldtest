@@ -50,6 +50,13 @@
       "when": 1792103044780,
       "tag": "0006_update_mails",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792236689704,
+      "tag": "0007_reward_tester_limit",
+      "breakpoints": true
     }
   ]
 }

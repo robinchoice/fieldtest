@@ -120,6 +120,8 @@ export const rewardsSchema = z.object({
   idea: sats,
   confirm: sats,
   autoApprove: sats,
+  // Sum of finding rewards a tester gets approved per round without the owner
+  autoApproveTester: sats,
   scale: z.number().int().min(10).max(1000),
 });
 
@@ -137,6 +139,7 @@ export const DEFAULT_REWARDS: Rewards = {
   idea: 800,
   confirm: 100,
   autoApprove: 1500,
+  autoApproveTester: 3000,
   scale: 100,
 };
 
