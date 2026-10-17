@@ -12,7 +12,7 @@ import { requireAdmin, requireAuth } from '../middleware/auth';
 import type { AppEnv } from '../types';
 
 const HOUR = 60 * 60 * 1000;
-const tokenChecksPerIp = rateLimit('unsubscribe-per-ip', 30, HOUR / 4);
+const tokenChecks = rateLimit('unsubscribe-token-checks', 30, HOUR / 4);
 const testMailsPerUser = rateLimit('update-tests-per-user', 20, HOUR);
 const sendsPerUser = rateLimit('update-sends-per-user', 5, HOUR);
 
@@ -28,6 +28,7 @@ async function summaries(c: Context<AppEnv>, id?: string): Promise<UpdateSummary
       pending: counts('pending').as('pending'),
     })
     .from(updateDeliveries)
+    .where(id ? eq(updateDeliveries.updateId, id) : undefined)
     .groupBy(updateDeliveries.updateId)
     .as('deliveries');
   const rows = await db
@@ -65,11 +66,11 @@ async function forAdmin(c: Context<AppEnv>) {
     .select({ id: updates.id, content: updates.content, image: updates.image, sentAt: updates.sentAt })
     .from(updates)
     .where(eq(updates.id, id));
+  if (!update) return null;
   const [user] = await db
     .select({ email: users.email, token: users.unsubscribeToken })
     .from(users)
     .where(eq(users.id, c.get('user').id));
-  if (!update) return null;
   return {
     update: { id, content: update.content, hasImage: !!update.image, date: update.sentAt ?? new Date() },
     user: user!,
@@ -79,14 +80,17 @@ async function forAdmin(c: Context<AppEnv>) {
 // Unsubscribing and subscribing again with the token from the mail, no login.
 // The one-click POST from the mail client lands here as well.
 async function setConsent(c: Context<AppEnv>, on: boolean) {
-  if (!(await tokenChecksPerIp.hit(c, clientIp(c)))) return tooManyRequests(c);
   const token = c.req.query('token') ?? '';
-  if (!UUID.test(token)) return c.json({ error: t(c).unsubscribeInvalid }, 400);
+  const [recipient] = UUID.test(token)
+    ? await c.get('db').select({ id: users.id }).from(users).where(eq(users.unsubscribeToken, token))
+    : [];
+  if (!(await tokenChecks.hit(c, recipient?.id ?? clientIp(c)))) return tooManyRequests(c);
+  if (!recipient) return c.json({ error: t(c).unsubscribeInvalid }, 400);
   const [user] = await c
     .get('db')
     .update(users)
     .set({ updatesConsentAt: on ? sql`coalesce(${users.updatesConsentAt}, now())` : null, updatedAt: new Date() })
-    .where(eq(users.unsubscribeToken, token))
+    .where(eq(users.id, recipient.id))
     .returning({ id: users.id });
   if (!user) return c.json({ error: t(c).unsubscribeInvalid }, 400);
   return c.json({ ok: true });
@@ -204,14 +208,14 @@ export const updateRoutes = new Hono<AppEnv>()
         .from(updates)
         .where(eq(updates.id, id))
         .for('update');
-      if (!row || row.sentAt) return t(c).updateAlreadySent;
-      if (!updateComplete(row.content)) return t(c).updateIncomplete;
+      if (!row || row.sentAt) return 'updateAlreadySent' as const;
+      if (!updateComplete(row.content)) return 'updateIncomplete' as const;
       await tx.update(updates).set({ sentAt: new Date() }).where(eq(updates.id, id));
       await tx.execute(
         sql`insert into ${updateDeliveries} (update_id, user_id) select ${id}::uuid, id from ${users} where updates_consent_at is not null`,
       );
       return null;
     });
-    if (error) return c.json({ error }, error === t(c).updateIncomplete ? 400 : 409);
+    if (error) return c.json({ error: t(c)[error] }, error === 'updateIncomplete' ? 400 : 409);
     return c.json({ update: (await summaries(c, id))[0] });
   });

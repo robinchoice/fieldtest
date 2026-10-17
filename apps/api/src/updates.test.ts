@@ -123,6 +123,34 @@ test('the unsubscribe link works without login, also as one-click POST', async (
   expect((await request('POST', '/updates/unsubscribe?token=nope')).status).toBe(400);
 });
 
+test('unsubscribe limits follow recipients while invalid tokens share the IP limit', async () => {
+  const headers = { 'x-forwarded-for': crypto.randomUUID() };
+  const recipients = await db
+    .insert(users)
+    .values(Array.from({ length: 31 }, () => ({ email: freshEmail(), name: 'Lena', updatesConsentAt: new Date() })))
+    .returning({ token: users.unsubscribeToken });
+  for (const { token } of recipients) {
+    expect((await request('POST', `/updates/unsubscribe?token=${token}`, undefined, headers)).status).toBe(200);
+  }
+  for (let attempt = 1; attempt < 30; attempt++) {
+    expect(
+      (await request('POST', `/updates/unsubscribe?token=${recipients[0]!.token}`, undefined, headers)).status,
+    ).toBe(200);
+  }
+  expect((await request('POST', `/updates/unsubscribe?token=${recipients[0]!.token}`, undefined, headers)).status).toBe(
+    429,
+  );
+  for (let attempt = 0; attempt < 30; attempt++) {
+    expect(
+      (await request('POST', `/updates/unsubscribe?token=${crypto.randomUUID()}`, undefined, headers)).status,
+    ).toBe(400);
+  }
+  expect((await request('POST', '/updates/unsubscribe?token=nope', undefined, headers)).status).toBe(429);
+  expect((await request('POST', `/updates/unsubscribe?token=${recipients[1]!.token}`, undefined, headers)).status).toBe(
+    200,
+  );
+});
+
 test('only admins see and write updates', async () => {
   const headers = await session(freshEmail());
   expect((await request('GET', '/updates', undefined, headers)).status).toBe(403);
@@ -239,6 +267,13 @@ test('drafts in updates/ parse, broken ones say why', () => {
 
   expect(() => parseDraft('x', '# de: Nur Deutsch\n- Eins', dir)).toThrow('needs a title');
   expect(() => parseDraft('x', 'Hallo\n# de: A\n- B\n# en: A\n- B', dir)).toThrow('line 1');
+
+  writeFileSync(path.join(dir, 'broken.md'), '# de: Nur Deutsch\n- Eins');
+  writeFileSync(path.join(dir, 'valid.md'), '# de: Deutsch\n- Eins\n# en: English\n- One');
+  expect(() => readDrafts(dir)).toThrow('needs a title');
+  const errors: unknown[] = [];
+  expect(readDrafts(dir, (err) => errors.push(err)).map((entry) => entry.slug)).toEqual(['valid']);
+  expect(errors).toHaveLength(1);
 });
 
 test('logged delivery errors carry no addresses', () => {

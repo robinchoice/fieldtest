@@ -68,6 +68,9 @@ test('the unsubscribe link works without login', async ({ page }) => {
   const [user] = await sql`insert into users (email, name, updates_consent_at) values (${email}, 'Lena', now())
     returning unsubscribe_token`;
   await page.goto(`/unsubscribe?token=${user!.unsubscribe_token}`);
+  await expect(page.getByRole('button', { name: 'Updates abbestellen' })).toBeVisible();
+  expect(await consent(email)).not.toBeNull();
+  await page.getByRole('button', { name: 'Updates abbestellen' }).click();
   await expect(page.getByRole('heading', { name: 'Abbestellt' })).toBeVisible();
   expect(await consent(email)).toBeNull();
 

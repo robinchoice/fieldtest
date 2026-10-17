@@ -52,11 +52,30 @@ const DISPLAY = `'Bricolage Grotesque','Arial Narrow',Arial,sans-serif`;
 const BODY = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
 const TEXT = `font-family:${BODY};font-size:16px;line-height:1.55;color:#17171A`;
 const SMALL = `font-family:${BODY};font-size:13px;line-height:1.6;color:#5E5E66`;
+const SENDER_BAND = GLOW.map((color) => {
+  const channels = [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
+  return {
+    light: `#${channels
+      .map((channel) =>
+        Math.round(channel * 0.4 + 255 * 0.6)
+          .toString(16)
+          .padStart(2, '0'),
+      )
+      .join('')}`,
+    dark: `#${channels
+      .map((channel) =>
+        Math.round(channel * 0.45)
+          .toString(16)
+          .padStart(2, '0'),
+      )
+      .join('')}`,
+  };
+});
 
 export const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
-const cells = (colors: string[], height: number) =>
-  `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>${colors
+const cells = (colors: string[], height: number, className = '') =>
+  `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="${className}"><tr>${colors
     .map(
       (color) =>
         `<td bgcolor="${color}" height="${height}" style="height:${height}px;line-height:${height}px;font-size:0;background:${color}">&nbsp;</td>`,
@@ -76,7 +95,7 @@ function layout(texts: Messages, locale: Locale, preheader: string, body: string
 @font-face{font-family:'Bricolage Grotesque';font-weight:200 800;font-stretch:75% 100%;src:url('${url}/fonts/bricolage-grotesque-latin.woff2') format('woff2')}
 body{margin:0;padding:0;-webkit-text-size-adjust:100%}
 @media (max-width:620px){.px{padding-left:20px!important;padding-right:20px!important}.h1{font-size:26px!important}}
-@media (prefers-color-scheme:dark){.bg{background:#0E0D12!important}.card{background:#16151B!important;border-color:rgba(255,255,255,.07)!important}.tx{color:#F2F0EA!important}.mu{color:#9A98A3!important}.ln{color:${CENTER}!important}}
+@media (prefers-color-scheme:dark){.bg{background:#0E0D12!important}.card{background:#16151B!important;border-color:rgba(255,255,255,.07)!important}.tx{color:#F2F0EA!important}.mu{color:#9A98A3!important}.ln{color:${CENTER}!important}${SENDER_BAND.map((color, index) => `.sender-band td:nth-child(${index + 1}){background:${color.dark}!important}`).join('')}}
 </style></head>
 <body class="bg" style="margin:0;padding:0;background:#F4F4F1">
 <div style="display:none;max-height:0;overflow:hidden">${escapeHtml(preheader)}</div>
@@ -90,7 +109,11 @@ body{margin:0;padding:0;-webkit-text-size-adjust:100%}
 <tr><td class="px" style="padding:22px 8px 0"><div class="mu" style="${SMALL};font-size:12px">${footer}</div>
 <div style="height:14px;line-height:14px;font-size:0">&nbsp;</div>
 <a href="https://pleasance.org" class="mu" style="font-family:${DISPLAY};font-stretch:80%;font-weight:650;font-size:13px;color:#5E5E66;text-decoration:none">${escapeHtml(texts.madeBy)} <span class="tx" style="color:#17171A;font-weight:780">Pleasance</span></a>
-<div style="width:150px;padding-top:3px">${cells(GLOW, 2)}</div></td></tr>
+<div style="width:150px;padding-top:3px">${cells(
+    SENDER_BAND.map((color) => color.light),
+    2,
+    'sender-band',
+  )}</div></td></tr>
 </table></td></tr></table></body></html>`;
 }
 

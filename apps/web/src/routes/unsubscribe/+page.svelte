@@ -1,38 +1,38 @@
 <script lang="ts">
   import { APP_NAME } from '@app/shared';
-  import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { api } from '$lib/api';
   import Button from '$lib/components/Button.svelte';
   import { t } from '$lib/i18n';
 
-  // The link from the update mails. Opening it unsubscribes without login.
-  // Mail scanners fetch links without running scripts, so they don't.
   const token = page.url.searchParams.get('token') ?? '';
-  let status = $state<'busy' | 'unsubscribed' | 'subscribed' | 'error'>('busy');
+  let status = $state<'ready' | 'unsubscribed' | 'subscribed' | 'error'>('ready');
+  let loading = $state(false);
   let error = $state('');
 
   async function set(path: string, next: typeof status) {
+    loading = true;
     try {
       await api.post(`/updates/${path}?token=${encodeURIComponent(token)}`, undefined, true);
       status = next;
     } catch (err) {
       error = err instanceof Error ? err.message : t().unsubscribeInvalid;
       status = 'error';
+    } finally {
+      loading = false;
     }
   }
-
-  onMount(() => set('unsubscribe', 'unsubscribed'));
 </script>
 
 <main>
   <p class="brand">{APP_NAME}</p>
-  {#if status === 'busy'}
-    <p>{t().unsubscribing}</p>
+  {#if status === 'ready'}
+    <h1>{t().unsubscribe}</h1>
+    <Button {loading} onclick={() => set('unsubscribe', 'unsubscribed')}>{t().unsubscribe}</Button>
   {:else if status === 'unsubscribed'}
     <h1>{t().unsubscribed}</h1>
     <p>{t().unsubscribedText(APP_NAME)}</p>
-    <Button variant="secondary" onclick={() => set('subscribe', 'subscribed')}>{t().resubscribe}</Button>
+    <Button variant="secondary" {loading} onclick={() => set('subscribe', 'subscribed')}>{t().resubscribe}</Button>
   {:else if status === 'subscribed'}
     <h1>{t().resubscribed}</h1>
     <p>{t().resubscribedText(APP_NAME)}</p>

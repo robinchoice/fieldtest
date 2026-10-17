@@ -46,10 +46,17 @@ export function parseDraft(slug: string, text: string, dir = DRAFTS_DIR): Draft 
   return { slug, content: content as UpdateContent, image };
 }
 
-export function readDrafts(dir = DRAFTS_DIR) {
-  return readdirSync(dir)
-    .filter((file) => file.endsWith('.md'))
-    .map((file) => parseDraft(file.slice(0, -3), readFileSync(path.join(dir, file), 'utf8'), dir));
+export function readDrafts(dir = DRAFTS_DIR, onError?: (error: unknown) => void) {
+  const drafts: Draft[] = [];
+  for (const file of readdirSync(dir).filter((file) => file.endsWith('.md'))) {
+    try {
+      drafts.push(parseDraft(file.slice(0, -3), readFileSync(path.join(dir, file), 'utf8'), dir));
+    } catch (err) {
+      if (!onError) throw err;
+      onError(err);
+    }
+  }
+  return drafts;
 }
 
 // On every API start. A file becomes a draft once and is never overwritten, so
@@ -58,7 +65,7 @@ export function readDrafts(dir = DRAFTS_DIR) {
 export async function importDrafts(db: Database) {
   let drafts: Draft[];
   try {
-    drafts = readDrafts();
+    drafts = readDrafts(DRAFTS_DIR, (err) => console.error('[updates] Draft not imported:', err));
   } catch (err) {
     console.error('[updates] Drafts not imported:', err);
     return;
