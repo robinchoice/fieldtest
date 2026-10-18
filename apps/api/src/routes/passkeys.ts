@@ -56,7 +56,7 @@ const passkeyColumns = {
   lastUsedAt: passkeys.lastUsedAt,
 };
 
-const toPasskey = (row: { id: string; backedUp: boolean; createdAt: Date; lastUsedAt: Date | null }): Passkey => ({
+const toPasskey = (row: Pick<typeof passkeys.$inferSelect, keyof typeof passkeyColumns>): Passkey => ({
   ...row,
   createdAt: row.createdAt.toISOString(),
   lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
@@ -187,5 +187,5 @@ export const passkeyRoutes = new Hono<AppEnv>()
         lastUsedAt: new Date(),
       })
       .where(eq(passkeys.id, passkey.id));
-    return respondWithSession(c, passkey.email, false, cookie);
+    return respondWithSession(c, passkey.email, { updates: false, cookie });
   });

@@ -42,7 +42,11 @@ const codeChecksPerIp = rateLimit('code-checks-per-ip', 30, 15 * MINUTE);
 // an account or session. Every login refreshes the language of the
 // update mails. A ticked opt-in switches them on, an unticked one leaves them.
 // Passkeys log in through it as well, they only exist for existing accounts.
-export async function respondWithSession(c: Context<AppEnv>, email: string, updates: boolean, cookie = false) {
+export async function respondWithSession(
+  c: Context<AppEnv>,
+  email: string,
+  { updates, cookie = false }: { updates: boolean; cookie?: boolean },
+) {
   const db = c.get('db');
   if (!(await mayLogIn(db, email))) return c.json({ error: t(c).signupClosed }, 403);
   const [user] = await db
@@ -132,7 +136,7 @@ export const authRoutes = new Hono<AppEnv>()
       .returning({ email: magicLinks.email, updatesOptIn: magicLinks.updatesOptIn });
     if (!link) return c.json({ error: t(c).linkExpired }, 400);
 
-    return respondWithSession(c, link.email, link.updatesOptIn, true);
+    return respondWithSession(c, link.email, { updates: link.updatesOptIn, cookie: true });
   })
 
   // Mobile apps: a 6-digit code by mail instead of a link
@@ -142,7 +146,7 @@ export const authRoutes = new Hono<AppEnv>()
     if (!(await mayLogIn(c.get('db'), email))) return c.json({ error: t(c).signupClosed }, 403);
 
     const code = await createCode(c, email, updates);
-    await sendLoginCodeEmail(email, code, { locale: locale(c), updates: updates });
+    await sendLoginCodeEmail(email, code, { locale: locale(c), updates });
     return c.json({ ok: true });
   })
 
@@ -177,7 +181,7 @@ export const authRoutes = new Hono<AppEnv>()
       .returning({ id: loginCodes.id });
     if (!used) return c.json({ error: t(c).codeWrong }, 400);
 
-    return respondWithSession(c, email, match.updatesOptIn, cookie);
+    return respondWithSession(c, email, { updates: match.updatesOptIn, cookie });
   })
 
   .post('/logout', async (c) => {
