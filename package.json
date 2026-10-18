@@ -18,5 +18,13 @@
     "@biomejs/biome": "^2.5.15",
     "@types/bun": "^1.4.2",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "@sveltejs/kit": {
+      "cookie": "0.7.2"
+    },
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
   }
 }
