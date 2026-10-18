@@ -21,6 +21,8 @@ test.afterEach(() => expect(errors).toEqual([]));
 async function logInAs(page: Page, email: string) {
   const token = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(token).digest('hex');
+  // Sign-up is closed, so the account comes first, as with login-link
+  await sql`insert into users (email, name) values (${email}, ${email.split('@')[0]!}) on conflict do nothing`;
   await sql`insert into magic_links (email, token_hash, expires_at)
     values (${email}, ${tokenHash}, ${new Date(Date.now() + 15 * 60_000)})`;
   await page.goto(`/auth/verify?token=${token}`);

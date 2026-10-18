@@ -38,12 +38,13 @@ const mailsPerAddress = rateLimit('mails-per-address', 5, 60 * MINUTE);
 const mailsPerIp = rateLimit('mails-per-ip', 20, 60 * MINUTE);
 const codeChecksPerIp = rateLimit('code-checks-per-ip', 30, 15 * MINUTE);
 
-// The first login creates the account, /magic-link and /code only send one
-// to addresses that may sign up. Every login refreshes the language of the
+// Check access again when redeeming a link, code or passkey before creating
+// an account or session. Every login refreshes the language of the
 // update mails. A ticked opt-in switches them on, an unticked one leaves them.
 // Passkeys log in through it as well, they only exist for existing accounts.
 export async function respondWithSession(c: Context<AppEnv>, email: string, updates: boolean, cookie = false) {
   const db = c.get('db');
+  if (!(await mayLogIn(db, email))) return c.json({ error: t(c).signupClosed }, 403);
   const [user] = await db
     .insert(users)
     .values({ email, name: email.split('@')[0]!, locale: locale(c), updatesConsentAt: updates ? new Date() : null })

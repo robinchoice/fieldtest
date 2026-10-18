@@ -20,6 +20,8 @@ test('a tester reports a dead button, the owner rates it and approves the payout
   test.setTimeout(90_000);
   const email = `e2e-${crypto.randomUUID()}@example.com`;
   const token = randomBytes(32).toString('hex');
+  // Sign-up is closed, so the account comes first, as with login-link
+  await sql`insert into users (email, name) values (${email}, ${email.split('@')[0]!}) on conflict do nothing`;
   await sql`insert into magic_links (email, token_hash, expires_at)
     values (${email}, ${createHash('sha256').update(token).digest('hex')}, ${new Date(Date.now() + 15 * 60_000)})`;
   await page.goto(`/auth/verify?token=${token}`);

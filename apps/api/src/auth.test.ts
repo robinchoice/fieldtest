@@ -187,6 +187,53 @@ test('closed sign-up mails only existing accounts and the allowlist', async () =
   }
 });
 
+test('closed sign-up rechecks links and codes at redemption, while existing accounts still log in', async () => {
+  const previousOpen = process.env.SIGNUP_OPEN;
+  const previousAllowlist = process.env.SIGNUP_ALLOWLIST;
+  try {
+    for (const method of ['link', 'code'] as const) {
+      for (const existing of [false, true]) {
+        const email = freshEmail();
+        if (existing) await db.insert(users).values({ email, name: 'Lena' });
+        delete process.env.SIGNUP_OPEN;
+        process.env.SIGNUP_ALLOWLIST = email;
+        expect((await post('/auth/magic-link', { email }, { 'x-forwarded-for': crypto.randomUUID() })).status).toBe(
+          200,
+        );
+        const token = lastMailedToken()!;
+        const code = lastMailedCode()!;
+
+        // The grant was issued while allowed, but access was withdrawn before redemption.
+        delete process.env.SIGNUP_ALLOWLIST;
+        const verify = await (method === 'link'
+          ? post('/auth/verify', { token })
+          : post('/auth/code/verify', { email, code }));
+        expect(verify.status).toBe(existing ? 200 : 403);
+        const json = await body(verify);
+        if (existing) {
+          expect(json.user.email).toBe(email);
+          const headers: Record<string, string> =
+            method === 'link'
+              ? { cookie: verify.headers.get('set-cookie')!.split(';')[0]! }
+              : { authorization: `Bearer ${json.token}` };
+          expect((await body(app.request('/api/v1/auth/me', { headers }))).user.id).toBe(json.user.id);
+        } else {
+          expect(json).toEqual({
+            error: 'Die Registrierung ist noch geschlossen. Für diese Adresse gibt es noch kein Konto.',
+          });
+          expect(verify.headers.get('set-cookie')).toBeNull();
+          expect(await db.select().from(users).where(eq(users.email, email))).toEqual([]);
+        }
+      }
+    }
+  } finally {
+    if (previousOpen === undefined) delete process.env.SIGNUP_OPEN;
+    else process.env.SIGNUP_OPEN = previousOpen;
+    if (previousAllowlist === undefined) delete process.env.SIGNUP_ALLOWLIST;
+    else process.env.SIGNUP_ALLOWLIST = previousAllowlist;
+  }
+});
+
 async function sessionFor(email: string) {
   const [user] = await db.insert(users).values({ email, name: 'Robin' }).returning({ id: users.id });
   const token = generateToken();
