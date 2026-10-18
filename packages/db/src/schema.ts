@@ -1,5 +1,6 @@
 import type { Rewards, UpdateContent } from '@app/shared';
 import {
+  bigint,
   boolean,
   customType,
   index,
@@ -61,6 +62,30 @@ export const sessions = pgTable('sessions', {
   tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Passkeys, added by a logged-in user (README, „Passkeys“). The id is the
+// credential ID in base64url, the authenticator sends it with every login.
+export const passkeys = pgTable('passkeys', {
+  id: varchar('id', { length: 1400 }).primaryKey(),
+  userId: uuid('user_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .notNull(),
+  publicKey: bytea('public_key').notNull(),
+  counter: bigint('counter', { mode: 'number' }).notNull(),
+  transports: jsonb('transports').$type<string[]>(),
+  // Synced by a password manager, else bound to one device
+  backedUp: boolean('backed_up').notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Challenges of running passkey ceremonies, single use. userId is set while
+// adding a passkey, null for a login.
+export const passkeyChallenges = pgTable('passkey_challenges', {
+  challenge: varchar('challenge', { length: 100 }).primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at').notNull(),
 });
 
 // Counters of lib/rate-limit.ts in the API

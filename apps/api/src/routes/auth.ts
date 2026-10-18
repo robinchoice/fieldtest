@@ -24,7 +24,7 @@ import {
   requireAdmin,
   requireAuth,
   SESSION_COOKIE,
-  SESSION_DAYS,
+  sessionExpiry,
   sessionToken,
   setSessionCookie,
   toUser,
@@ -33,8 +33,6 @@ import {
 import type { AppEnv } from '../types';
 
 const MINUTE = 60 * 1000;
-// Apps would otherwise ask for a new code every month
-const APP_SESSION_DAYS = 365;
 const CODE_ATTEMPTS = 5;
 const mailsPerAddress = rateLimit('mails-per-address', 5, 60 * MINUTE);
 const mailsPerIp = rateLimit('mails-per-ip', 20, 60 * MINUTE);
@@ -43,7 +41,8 @@ const codeChecksPerIp = rateLimit('code-checks-per-ip', 30, 15 * MINUTE);
 // The first login creates the account, /magic-link and /code only send one
 // to addresses that may sign up. Every login refreshes the language of the
 // update mails. A ticked opt-in switches them on, an unticked one leaves them.
-async function startSession(c: Context<AppEnv>, email: string, days: number, updates: boolean) {
+// Passkeys log in through it as well, they only exist for existing accounts.
+export async function respondWithSession(c: Context<AppEnv>, email: string, updates: boolean, cookie = false) {
   const db = c.get('db');
   const [user] = await db
     .insert(users)
@@ -58,12 +57,25 @@ async function startSession(c: Context<AppEnv>, email: string, days: number, upd
   await db.insert(sessions).values({
     userId: user!.id,
     tokenHash: hashToken(token),
-    expiresAt: new Date(Date.now() + days * 24 * 60 * MINUTE),
+    expiresAt: sessionExpiry(),
   });
-  return { user: toUser(user!), token };
+  if (!cookie) return c.json({ user: toUser(user!), token });
+  setSessionCookie(c, token);
+  return c.json({ user: toUser(user!) });
 }
 
-async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | null, updatesOptIn: boolean) {
+async function createCode(c: Context<AppEnv>, email: string, updatesOptIn: boolean) {
+  const code = String(crypto.getRandomValues(new Uint32Array(1))[0]! % 1_000_000).padStart(6, '0');
+  await c
+    .get('db')
+    .insert(loginCodes)
+    .values({ email, codeHash: hashToken(code), updatesOptIn, expiresAt: new Date(Date.now() + 15 * MINUTE) });
+  return code;
+}
+
+// The mail carries a link and a code: the link for this browser, the code for
+// when the link opens elsewhere (another device, the mail app's own browser).
+async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | null, updatesOptIn = false) {
   const token = generateToken();
   await c
     .get('db')
@@ -74,7 +86,8 @@ async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | n
       updatesOptIn,
       expiresAt: new Date(Date.now() + 15 * MINUTE),
     });
-  await sendMagicLinkEmail(email, token, next, { locale: locale(c), updates: updatesOptIn });
+  const code = await createCode(c, email, updatesOptIn);
+  await sendMagicLinkEmail(email, token, code, next, { locale: locale(c), updates: updatesOptIn });
 }
 
 export const authRoutes = new Hono<AppEnv>()
@@ -96,7 +109,7 @@ export const authRoutes = new Hono<AppEnv>()
       .insert(users)
       .values({ email, name: email.split('@')[0]! })
       .onConflictDoNothing();
-    await mailMagicLink(c, email, null, false);
+    await mailMagicLink(c, email, null);
     return c.json({ ok: true });
   })
 
@@ -118,9 +131,7 @@ export const authRoutes = new Hono<AppEnv>()
       .returning({ email: magicLinks.email, updatesOptIn: magicLinks.updatesOptIn });
     if (!link) return c.json({ error: t(c).linkExpired }, 400);
 
-    const { user, token } = await startSession(c, link.email, SESSION_DAYS, link.updatesOptIn);
-    setSessionCookie(c, token);
-    return c.json({ user });
+    return respondWithSession(c, link.email, link.updatesOptIn, true);
   })
 
   // Mobile apps: a 6-digit code by mail instead of a link
@@ -129,24 +140,16 @@ export const authRoutes = new Hono<AppEnv>()
     if (!(await mailsPerIp.hit(c, clientIp(c))) || !(await mailsPerAddress.hit(c, email))) return tooManyRequests(c);
     if (!(await mayLogIn(c.get('db'), email))) return c.json({ error: t(c).signupClosed }, 403);
 
-    const code = String(crypto.getRandomValues(new Uint32Array(1))[0]! % 1_000_000).padStart(6, '0');
-    await c
-      .get('db')
-      .insert(loginCodes)
-      .values({
-        email,
-        codeHash: hashToken(code),
-        updatesOptIn: updates,
-        expiresAt: new Date(Date.now() + 15 * MINUTE),
-      });
-    await sendLoginCodeEmail(email, code, { locale: locale(c), updates });
+    const code = await createCode(c, email, updates);
+    await sendLoginCodeEmail(email, code, { locale: locale(c), updates: updates });
     return c.json({ ok: true });
   })
 
-  // Answers with the session token, the app sends it as a bearer token
+  // The app gets the session token and sends it as a bearer token, the web
+  // asks for the cookie instead, so its script never sees the token.
   .post('/code/verify', validJson(verifyCodeSchema), async (c) => {
     if (!(await codeChecksPerIp.hit(c, clientIp(c)))) return tooManyRequests(c);
-    const { email, code } = c.req.valid('json');
+    const { email, code, cookie } = c.req.valid('json');
     const db = c.get('db');
 
     // Every guess counts against all open codes of the address before the
@@ -173,7 +176,7 @@ export const authRoutes = new Hono<AppEnv>()
       .returning({ id: loginCodes.id });
     if (!used) return c.json({ error: t(c).codeWrong }, 400);
 
-    return c.json(await startSession(c, email, APP_SESSION_DAYS, match.updatesOptIn));
+    return respondWithSession(c, email, match.updatesOptIn, cookie);
   })
 
   .post('/logout', async (c) => {

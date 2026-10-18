@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
-import { createDb, migrateDb, sessions, users } from '@app/db';
+import { createDb, migrateDb, passkeys, sessions, users } from '@app/db';
 import { eq } from 'drizzle-orm';
 import { createApp } from './app';
 import { generateToken, hashToken } from './middleware/auth';
@@ -46,7 +46,7 @@ function lastMailedToken() {
 }
 
 function lastMailedCode() {
-  return lastMail()?.match(/Dein Code: (\d{6})/)?.[1];
+  return lastMail()?.match(/(?:Dein Code:|diesen Code ein:) (\d{6})/)?.[1];
 }
 
 const otherCode = (code: string) => (code === '000000' ? '000001' : '000000');
@@ -129,6 +129,22 @@ test('apps log in with a code and get a bearer token', async () => {
   expect((await body(me)).user.id).toBe(user.id);
 
   expect((await post('/auth/code/verify', { email, code })).status).toBe(400);
+});
+
+test('the login mail of the web also carries a code, which logs in with a cookie', async () => {
+  const email = freshEmail();
+  await post('/auth/magic-link', { email });
+  expect(lastMailedToken()).toBeDefined();
+  const code = lastMailedCode()!;
+
+  const verify = await post('/auth/code/verify', { email, code, cookie: true });
+  expect(verify.status).toBe(200);
+  const json = await body(verify);
+  expect(json.user.email).toBe(email);
+  expect(json.token).toBeUndefined();
+  const session = verify.headers.get('set-cookie')!.match(/session=([0-9a-f]+)/)![1]!;
+  const me = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${session}` } });
+  expect((await body(me)).user.email).toBe(email);
 });
 
 test('a code stops working after five wrong tries', async () => {
@@ -234,9 +250,43 @@ test('a session in use is renewed', async () => {
   const me = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${token}` } });
   expect(me.headers.get('set-cookie')).toContain(`session=${token}`);
   const [renewed] = await db.select().from(sessions).where(eq(sessions.id, session!.id));
-  expect(renewed!.expiresAt.getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
+  expect(renewed!.expiresAt.getTime()).toBeGreaterThan(Date.now() + 364 * 24 * 60 * 60 * 1000);
 
   // Renewed sessions are left alone for a day
   const again = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${token}` } });
   expect(again.headers.get('set-cookie')).toBeNull();
+});
+
+// The full ceremony runs in the browser test with Chromium's virtual authenticator
+test('passkeys belong to logged-in accounts and fail closed', async () => {
+  const asOwner = await sessionFor(freshEmail());
+  const asOther = await sessionFor(freshEmail());
+  expect((await post('/auth/passkeys/register/options', {})).status).toBe(401);
+
+  const register = await body(post('/auth/passkeys/register/options', {}, asOwner));
+  expect(register.rp.id).toBe(new URL(process.env.APP_URL!).hostname);
+  expect(register.authenticatorSelection.residentKey).toBe('required');
+
+  const login = await body(post('/auth/passkeys/login/options', {}));
+  expect(login.rpId).toBe(register.rp.id);
+  expect(login.allowCredentials).toBeUndefined();
+
+  const response = { id: 'unknown', rawId: 'unknown', type: 'public-key', response: {}, clientExtensionResults: {} };
+  const unknown = await post('/auth/passkeys/login', { response });
+  expect(unknown.status).toBe(400);
+  expect((await body(unknown)).error).toBe('Diesen Passkey kennen wir nicht. Melde dich per Mail an.');
+
+  const owner = (await body(app.request('/api/v1/auth/me', { headers: asOwner }))).user;
+  const id = `test-${crypto.randomUUID()}`;
+  await db.insert(passkeys).values({ id, userId: owner.id, publicKey: Buffer.from([1]), counter: 0, backedUp: true });
+  const forged = await post('/auth/passkeys/login', { response: { ...response, id, rawId: id } });
+  expect(forged.status).toBe(400);
+  expect(forged.headers.get('set-cookie')).toBeNull();
+
+  const del = (headers: Record<string, string>) =>
+    app.request(`/api/v1/auth/passkeys/${id}`, { method: 'DELETE', headers });
+  expect((await del(asOther)).status).toBe(404);
+  expect((await body(app.request('/api/v1/auth/passkeys', { headers: asOwner }))).passkeys).toHaveLength(1);
+  expect((await del(asOwner)).status).toBe(200);
+  expect((await body(app.request('/api/v1/auth/passkeys', { headers: asOwner }))).passkeys).toEqual([]);
 });

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import type { HTMLInputAttributes } from 'svelte/elements';
+
+  // Further attributes such as autocomplete or inputmode go to the input
   let {
     value = $bindable(''),
     label,
@@ -6,6 +9,7 @@
     placeholder = '',
     error,
     required = false,
+    ...rest
   }: {
     value?: string;
     label: string;
@@ -13,12 +17,12 @@
     placeholder?: string;
     error?: string;
     required?: boolean;
-  } = $props();
+  } & Omit<HTMLInputAttributes, 'value' | 'type'> = $props();
 </script>
 
 <label>
   <span>{label}</span>
-  <input {type} bind:value {placeholder} {required} class:invalid={!!error} />
+  <input {...rest} {type} bind:value {placeholder} {required} class:invalid={!!error} />
   {#if error}<small>{error}</small>{/if}
 </label>
 

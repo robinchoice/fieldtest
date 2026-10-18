@@ -7,6 +7,7 @@ import { t } from './lib/i18n';
 import { captureException } from './monitoring';
 import { agentRoutes } from './routes/agents';
 import { authRoutes } from './routes/auth';
+import { passkeyRoutes } from './routes/passkeys';
 import { reportRoutes } from './routes/reports';
 import { roundRoutes } from './routes/rounds';
 import { runnerRoutes } from './routes/runner';
@@ -39,6 +40,7 @@ export function createApp(db: Database) {
       .route('/', agentRoutes)
       .basePath('/api/v1')
       .route('/auth', authRoutes)
+      .route('/auth/passkeys', passkeyRoutes)
       .route('/reports', reportRoutes)
       .route('/rounds', roundRoutes)
       .route('/runner', runnerRoutes)

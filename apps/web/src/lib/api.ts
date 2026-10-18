@@ -1,6 +1,16 @@
 import { page } from '$app/state';
 import { toastError } from './toast.svelte';
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 // The API answers errors as { error: string } in the current language; they
 // show up as a toast unless silent.
 async function request<T>(method: string, path: string, body?: unknown, silent = false): Promise<T> {
@@ -13,9 +23,9 @@ async function request<T>(method: string, path: string, body?: unknown, silent =
   });
 
   if (!res.ok) {
-    const { error } = await res.json().catch(() => ({ error: res.statusText }));
+    const { error, code } = await res.json().catch(() => ({ error: res.statusText }));
     if (!silent) toastError(error);
-    throw new Error(error);
+    throw new ApiError(error, code);
   }
   return res.json();
 }

@@ -136,18 +136,29 @@ const optInText = (texts: Messages, updates: boolean) => (updates ? `\n\n${texts
 
 type Login = { locale: Locale; updates: boolean };
 
-export function sendMagicLinkEmail(email: string, token: string, next: string | null, { locale, updates }: Login) {
+const codeBlock = (code: string) =>
+  `<p class="tx" style="margin:0 0 18px;font-family:${DISPLAY};font-stretch:80%;font-weight:780;font-size:38px;letter-spacing:6px;color:#17171A">${code}</p>`;
+
+// The subject shows the code, so a phone's notification is enough to type it in
+// on the laptop.
+export function sendMagicLinkEmail(
+  email: string,
+  token: string,
+  code: string,
+  next: string | null,
+  { locale, updates }: Login,
+) {
   const texts = messages[locale];
   const url = `${process.env.APP_URL}/auth/verify?token=${token}${next ? `&next=${encodeURIComponent(next)}` : ''}`;
   return sendMail({
     to: email,
-    subject: texts.linkSubject(APP_NAME),
-    text: `${texts.linkPlain} ${url}${optInText(texts, updates)}\n\n${texts.linkValid}\n\n--\n${texts.loginWhy}`,
+    subject: texts.codeSubject(code, APP_NAME),
+    text: `${texts.linkPlain} ${url}\n\n${texts.linkCodeOnPage} ${code}${optInText(texts, updates)}\n\n${texts.linkValid}\n\n--\n${texts.loginWhy}`,
     html: layout(
       texts,
       locale,
-      texts.linkPrompt,
-      `${heading(texts.linkSubject(APP_NAME))}${paragraph(texts.linkPrompt)}${space(22)}${button(texts.logIn, url)}${optIn(texts, updates)}${space(22)}<p class="mu" style="margin:0;${SMALL}">${escapeHtml(texts.linkValid)}</p>`,
+      texts.codeSubject(code, APP_NAME),
+      `${heading(texts.logIn)}${paragraph(texts.linkPrompt)}${space(22)}${button(texts.logIn, url)}${space(26)}${paragraph(texts.linkCodeOnPage)}${space(14)}${codeBlock(code)}<p class="mu" style="margin:0;${SMALL}">${escapeHtml(texts.linkValid)}</p>${optIn(texts, updates)}`,
       escapeHtml(texts.loginWhy),
     ),
   });
@@ -163,7 +174,7 @@ export function sendLoginCodeEmail(email: string, code: string, { locale, update
       texts,
       locale,
       texts.codeSubject(code, APP_NAME),
-      `${heading(texts.logIn)}${paragraph(texts.codePrompt)}${space(14)}<p class="tx" style="margin:0 0 18px;font-family:${DISPLAY};font-stretch:80%;font-weight:780;font-size:38px;letter-spacing:6px;color:#17171A">${code}</p><p class="mu" style="margin:0;${SMALL}">${escapeHtml(texts.codeValid)}</p>${optIn(texts, updates)}`,
+      `${heading(texts.logIn)}${paragraph(texts.codePrompt)}${space(14)}${codeBlock(code)}<p class="mu" style="margin:0;${SMALL}">${escapeHtml(texts.codeValid)}</p>${optIn(texts, updates)}`,
       escapeHtml(texts.loginWhy),
     ),
   });

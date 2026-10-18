@@ -38,7 +38,7 @@ test('the login form asks for update mails without a preset tick', async ({ page
   await expect(optIn).not.toBeChecked();
   await page.getByLabel('E-Mail').fill(email);
   await optIn.check();
-  await page.getByRole('button', { name: 'Login-Link senden' }).click();
+  await page.getByRole('button', { name: 'Login-Mail senden' }).click();
   await expect(page.getByText('Check deine E-Mails')).toBeVisible();
 
   // Counts only once the link is opened

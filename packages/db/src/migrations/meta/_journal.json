@@ -57,6 +57,13 @@
       "when": 1792236689704,
       "tag": "0007_reward_tester_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792275030528,
+      "tag": "0008_bouncy_shatterstar",
+      "breakpoints": true
     }
   ]
 }

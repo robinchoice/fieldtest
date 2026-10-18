@@ -68,7 +68,7 @@ Der Runner ruft nur öffentliche Hostnamen auf, damit eine präparierte Lightnin
 
 Nutzer mit Konto (Owner, nicht die Testpersonen einer Runde) bekommen neue Funktionen per Mail, wenn sie es wollen. Gespeichert wird alles in der Datenbank der App, verschickt über das SMTP aus `lib/mail.ts`.
 
-- Opt-in: Standard ist aus. Unter dem Login-Formular steht eine nicht vorausgewählte Checkbox, sie gilt erst, wenn der Login-Link eingelöst wird. Das ist zugleich das Double-Opt-in. Geschaltet wird jederzeit unter `/settings`. `users.updates_consent_at` hält den Zeitpunkt der Einwilligung als Nachweis, `users.locale` die Sprache der Mails.
+- Opt-in: Standard ist aus. Unter dem Login-Formular steht eine nicht vorausgewählte Checkbox, sie gilt erst, wenn der Login-Link oder Code eingelöst wird. Das ist zugleich das Double-Opt-in. Geschaltet wird jederzeit unter `/settings`. `users.updates_consent_at` hält den Zeitpunkt der Einwilligung als Nachweis, `users.locale` die Sprache der Mails.
 - Abmelden: Jede Update-Mail hat einen Link auf `/unsubscribe?token=…`, der ohne Login abbestellt, dazu `List-Unsubscribe` und `List-Unsubscribe-Post` für One-Click im Mail-Programm. Der Token steht pro Konto in `users.unsubscribe_token`.
 - Entwürfe schreiben Agenten als `updates/<datum>-<thema>.md`, etwa aus den Commits seit der letzten Datei dort. Je Sprache eine Überschrift `# de: Titel` bzw. `# en: Titel`, darunter die Features als Liste `- …`, optional ein Bild `![](bild.png)` neben der Datei (PNG oder JPEG). Die API legt jede Datei beim Start einmal als Entwurf an und überschreibt ihn danach nie. `bun run test` prüft alle Dateien.
 - Senden: `/admin/updates`, nur für `ADMIN_EMAILS`, also nie für admin@pleasance.org. Dort Entwürfe bearbeiten oder neu anlegen, Vorschau je Sprache, „Testmail an mich“ in beiden Sprachen, dann „An … Abonnenten senden“. Den Versand löst nur Robin aus, denn das ist eine Mail in seinem Namen an Dritte. Versendete Updates bleiben mit Datum und Zahlen stehen und lassen sich nicht mehr ändern.
@@ -92,7 +92,7 @@ Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `doc
 
 ## Registrierung öffnen
 
-Fieldtest ist von außen erreichbar, aber geschlossen, bis Robin ausdrücklich das Go gibt, externe Nutzer aufzunehmen. Bis dahin legen Magic Link und App-Code neue Konten nur für die Adressen in `SIGNUP_ALLOWLIST` an (kommagetrennt, dauerhafte Adressen wie Robins). Bestehende Konten melden sich immer an. Fremde bekommen bei `/auth/magic-link` und `/auth/code` die Meldung „Die Registrierung ist noch geschlossen“, es geht keine Mail raus. Seiten ohne Login bleiben offen: geteilte Berichte, der Demo-Prototyp und alles, was Testpersonen einer Runde über deren Einladungslink und das Overlay tun. Testpersonen haben kein Konto, sie hängen an ihrer Lightning-Adresse.
+Fieldtest ist von außen erreichbar, aber geschlossen, bis Robin ausdrücklich das Go gibt, externe Nutzer aufzunehmen. Bis dahin legen Magic Link und App-Code neue Konten nur für die Adressen in `SIGNUP_ALLOWLIST` an (kommagetrennt, dauerhafte Adressen wie Robins). Bestehende Konten melden sich immer an, Passkeys gibt es nur für sie. Fremde bekommen bei `/auth/magic-link` und `/auth/code` die Meldung „Die Registrierung ist noch geschlossen“, es geht keine Mail raus. Seiten ohne Login bleiben offen: geteilte Berichte, der Demo-Prototyp und alles, was Testpersonen einer Runde über deren Einladungslink und das Overlay tun. Testpersonen haben kein Konto, sie hängen an ihrer Lightning-Adresse.
 
 - Tester aufnehmen: Ein Admin klickt in der App oben auf „Tester einladen“ (`/invite`) und gibt die Adresse ein. Das legt das Konto an und schickt einen Login-Link, ohne Coolify und Redeploy. Danach meldet sich der Tester wie jedes bestehende Konto an, auch wenn der Link abläuft. Admins sind die Adressen in `ADMIN_EMAILS` (kommagetrennt, Standard robin@pleasance.org, der menschliche Admin), die API prüft das. Einladen öffnet nichts, `SIGNUP_OPEN` bleibt, wie es ist.
 - admin@pleasance.org, der agentische Admin, kommt nie in `ADMIN_EMAILS`: Agenten melden sich damit in der Vorschau an und dürfen weder Konten an der Registrierung vorbei anlegen noch Dritte anmailen.
@@ -101,10 +101,18 @@ Fieldtest ist von außen erreichbar, aber geschlossen, bis Robin ausdrücklich d
 
 ## Login in der Savor-Vorschau
 
-Agenten zeigen Änderungen hinter dem Login in der Savor-Vorschau mit dem Testkonto admin@pleasance.org, dem agentischen Admin. Admin-Rechte in der App hat es nicht (siehe „Registrierung öffnen“). `login-link <slug>` aus dem Kontor ruft dafür im API-Container `bun apps/api/src/login-link.ts <email>` auf. Das gibt einen einmaligen Login-Link aus, 15 Minuten gültig wie ein gemailter, den der Agent per `browser_navigate` öffnet. Die Vorschau hat pro Projekt ein festes Profil, und Sessions in Benutzung verlängern sich bei jedem Besuch auf 30 Tage. Also bleibt sie angemeldet.
+Agenten zeigen Änderungen hinter dem Login in der Savor-Vorschau mit dem Testkonto admin@pleasance.org, dem agentischen Admin. Admin-Rechte in der App hat es nicht (siehe „Registrierung öffnen“). `login-link <slug>` aus dem Kontor ruft dafür im API-Container `bun apps/api/src/login-link.ts <email>` auf. Das gibt einen einmaligen Login-Link aus, 15 Minuten gültig wie ein gemailter, den der Agent per `browser_navigate` öffnet. Die Vorschau hat pro Projekt ein festes Profil, und Sessions in Benutzung verlängern sich höchstens einmal am Tag auf 365 Tage. Also bleibt sie angemeldet.
 
 ## Bewusst offen
 
 - Das Overlay bringt seine Styles als `<style>` im Shadow DOM mit. Prototypen mit strenger CSP müssen `style-src 'unsafe-inline'` erlauben, sonst bleibt das Overlay ungestylt.
 - Der Runner läuft aus dem Repo, ein eigenes Image dafür baut die CI noch nicht.
 - Rechtlich: Fieldtest verwahrt nichts und überweist nicht selbst. Ob das Runner-Modell ohne MiCA-Erlaubnis auskommt, sollte die BaFin bestätigen (Fintech-Kontaktformular, Frage nach Erlaubnispflicht).
+
+## Passkeys
+
+Die Login-Mail enthält einen Link und einen sechsstelligen Code, auch im Betreff. Beide gelten 15 Minuten. Die Login-Seite löst den Code mit einer httpOnly-Sitzung ein. Sitzungen gelten 365 Tage und verlängern sich bei Benutzung höchstens einmal am Tag; Abmelden löscht sie sofort.
+
+Eingeloggte Nutzer können unter `/settings` Web-Passkeys anlegen und entfernen. Die Login-Seite bietet sie als Autofill im Adressfeld und per Knopf an. SimpleWebAuthn prüft sie gegen Hostname und Origin aus `APP_URL`; Challenges liegen fünf Minuten und einmalig nutzbar in Postgres. Die Registrierung bleibt geschlossen. Ein neues Gerät ohne synchronisierten Passkey nutzt die Login-Mail.
+
+Passkeys sind an die Domain gebunden: Nach einem Domainwechsel einmal per Mail anmelden und einen neuen Passkey anlegen. Lokal funktioniert `localhost` ohne HTTPS, eine LAN-Adresse braucht HTTPS. Entfernte Passkeys können auf dem Gerät verbleiben; beim nächsten Login bittet das Web den Browser, sie zu vergessen. Fieldtest hat keine Mobile-App und keine App-Passkey-Verknüpfungen.
