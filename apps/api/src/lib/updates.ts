@@ -91,6 +91,7 @@ export function redact(err: unknown) {
 export function deliverNext(
   db: Database,
   intervalMs: number,
+  send: typeof sendMail = sendMail,
 ): Promise<'idle' | 'wait' | 'sent' | 'skipped' | 'failed'> {
   return db.transaction(async (tx) => {
     const [lock] = await tx.execute<{ ok: boolean }>(
@@ -153,7 +154,7 @@ export function deliverNext(
       row.token,
     );
     try {
-      await sendMail({ to: row.email, ...mail });
+      await send({ to: row.email, ...mail });
     } catch (err) {
       console.error(
         `[updates] Delivery ${row.id} of update ${row.updateId} failed, attempt ${row.attempts + 1}: ${redact(err)}`,

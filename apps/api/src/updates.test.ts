@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createDb, migrateDb, sessions, updateDeliveries, users } from '@app/db';
 import { APP_NAME } from '@app/shared';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { createApp } from './app';
 import { updateMail } from './lib/mail';
 import { deliverNext, parseDraft, readDrafts, redact } from './lib/updates';
@@ -233,6 +233,48 @@ test('the admin drafts, previews, tests and sends; the worker delivers to opted-
   const list = await body(request('GET', '/updates', undefined, admin));
   expect(list.subscribers).toBeGreaterThan(0);
   expect(list.updates.find((update: { id: string }) => update.id === id)).toMatchObject({ pending: 0 });
+});
+
+test('failed deliveries wait a minute, then are tried again, and are given up after three attempts', async () => {
+  const admin = await session(ADMIN);
+  const subscriber = freshEmail();
+  await logInWithLink(subscriber, true);
+  const { update } = await body(request('POST', '/updates', { content }, admin));
+  await body(request('POST', `/updates/${update.id}/send`, undefined, admin));
+  const outage = async () => {
+    throw new Error('451 4.7.1 Try again later');
+  };
+  const deliveries = () =>
+    db
+      .select({ status: updateDeliveries.status, attempts: updateDeliveries.attempts })
+      .from(updateDeliveries)
+      .where(eq(updateDeliveries.updateId, update.id));
+  // The pause after a failure is over
+  const pause = () =>
+    db
+      .update(updateDeliveries)
+      .set({ attemptedAt: sql`now() - interval '2 minutes'` })
+      .where(eq(updateDeliveries.updateId, update.id));
+
+  const errors = spyOn(console, 'error');
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const results: string[] = [];
+    let result: string;
+    while ((result = await deliverNext(db, 0, outage)) !== 'idle') results.push(result);
+    expect(new Set(results)).toEqual(new Set(['failed']));
+    const rows = await deliveries();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(new Set(rows.map((row) => row.attempts))).toEqual(new Set([attempt]));
+    expect(new Set(rows.map((row) => row.status))).toEqual(new Set([attempt < 3 ? 'pending' : 'failed']));
+    await pause();
+  }
+  expect(errors.mock.calls.every((args) => !String(args[0]).includes(subscriber))).toBe(true);
+  errors.mockRestore();
+
+  // Given up for good, a working mail server changes nothing
+  const sent: string[] = [];
+  expect(await deliverNext(db, 0, async ({ to }) => void sent.push(to))).toBe('idle');
+  expect(sent).toEqual([]);
 });
 
 test('update mails carry one-click unsubscribe headers and a text version', () => {
