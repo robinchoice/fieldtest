@@ -107,6 +107,14 @@ test('login mails per address are rate limited', async () => {
   expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
 });
 
+test('redeeming links is rate limited per address', async () => {
+  const headers = { 'x-forwarded-for': crypto.randomUUID() };
+  for (let attempt = 0; attempt < 60; attempt++) {
+    expect((await post('/auth/verify', { token: 'nope' }, headers)).status).toBe(400);
+  }
+  expect((await post('/auth/verify', { token: 'nope' }, headers)).status).toBe(429);
+});
+
 test('invalid input answers with an error message', async () => {
   const res = await post('/auth/magic-link', { email: 'no-address' });
   expect(res.status).toBe(400);
