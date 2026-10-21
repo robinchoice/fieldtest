@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createDb, migrateDb, sessions, updateDeliveries, users } from '@app/db';
 import { APP_NAME } from '@app/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { createApp } from './app';
 import { updateMail } from './lib/mail';
 import { deliverNext, parseDraft, readDrafts, redact } from './lib/updates';
@@ -241,6 +241,11 @@ test('failed deliveries wait a minute, then are tried again, and are given up af
   await logInWithLink(subscriber, true);
   const { update } = await body(request('POST', '/updates', { content }, admin));
   await body(request('POST', `/updates/${update.id}/send`, undefined, admin));
+  // Only this subscriber's delivery, the database keeps the accounts of earlier runs
+  const { id: userId } = await userRow(subscriber);
+  await db
+    .delete(updateDeliveries)
+    .where(and(eq(updateDeliveries.updateId, update.id), ne(updateDeliveries.userId, userId)));
   const outage = async () => {
     throw new Error('451 4.7.1 Try again later');
   };

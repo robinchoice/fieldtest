@@ -38,7 +38,7 @@ async function login() {
   const token = mail!.match(/token=([0-9a-f]+)/)![1];
   const res = await app.request('/api/v1/auth/verify', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
     body: JSON.stringify({ token }),
   });
   return { cookie: `session=${res.headers.get('set-cookie')!.match(/session=([0-9a-f]+)/)![1]}` };
