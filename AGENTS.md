@@ -19,6 +19,7 @@
 - Fieldtest verwahrt nie Geld: keine Guthaben, keine Wallet-Secrets der Owner auf dem Server, keine eigene Cashu-Mint, kein Tausch. Ausgezahlt wird nur über den Runner des Owners. Sonst wäre eine MiCA-Erlaubnis nötig.
 - Live-Belohnungen berechnet die API (`lib/sessions.ts`), dem Overlay wird nichts geglaubt außer „aktiv in diesem 10-Sekunden-Fenster“, und auch das nur bis zur verstrichenen Zeit.
 - Geldbeträge in Sats als ganze Zahlen, Reputation und Skalierung in Prozent.
+- Finding-Belohnungen rechnet `settleFinding` in `lib/claims.ts` in einer Transaktion unter der Zeilensperre der Runde ab (`for no key update` auf `rounds`, wie die Finding-Nummern in `routes/sdk.ts`). Owner und Worker bewerten dasselbe Finding sonst gleichzeitig und hinterlassen doppelte Claims. Wer Claims eines Findings schreibt, tut das in dieser Transaktion, nicht daneben.
 - Das Overlay (`packages/sdk`) läuft in fremden Prototypen: Shadow DOM, keine Abhängigkeiten, jede eingesetzte Zeichenkette über `esc()`.
 
 ## Konventionen
