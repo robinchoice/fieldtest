@@ -259,8 +259,8 @@ test('failed deliveries wait a minute, then are tried again, and are given up af
   const errors = spyOn(console, 'error');
   for (let attempt = 1; attempt <= 3; attempt++) {
     const results: string[] = [];
-    let result: string;
-    while ((result = await deliverNext(db, 0, outage)) !== 'idle') results.push(result);
+    for (let result = await deliverNext(db, 0, outage); result !== 'idle'; result = await deliverNext(db, 0, outage))
+      results.push(result);
     expect(new Set(results)).toEqual(new Set(['failed']));
     const rows = await deliveries();
     expect(rows.length).toBeGreaterThan(0);
