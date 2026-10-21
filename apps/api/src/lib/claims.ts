@@ -90,8 +90,14 @@ async function decision(db: Db, roundId: string, testerId: string, amount: numbe
 // Finding rewards of a round are decided one at a time: the round's row stays
 // locked until the transaction ends, like for the finding numbers in routes/sdk.ts.
 // So the owner and the evaluation can't both settle a finding at once, and the
-// limit per tester holds across findings settled at the same time.
+// limit per tester holds across findings settled at the same time. The finding
+// is read after the lock, so it is the state the previous settlement left.
 async function lockedFinding(tx: Db, findingId: string) {
+  await tx
+    .select({ id: rounds.id })
+    .from(rounds)
+    .where(eq(rounds.id, tx.select({ id: findings.roundId }).from(findings).where(eq(findings.id, findingId))))
+    .for('no key update');
   const [finding] = await tx
     .select({
       id: findings.id,
@@ -102,8 +108,7 @@ async function lockedFinding(tx: Db, findingId: string) {
     })
     .from(findings)
     .innerJoin(rounds, eq(rounds.id, findings.roundId))
-    .where(eq(findings.id, findingId))
-    .for('no key update', { of: rounds });
+    .where(eq(findings.id, findingId));
   return finding;
 }
 
@@ -111,11 +116,15 @@ type LockedFinding = NonNullable<Awaited<ReturnType<typeof lockedFinding>>>;
 
 // Recomputes what the reporters of a finding get: the first one the reward for
 // its severity, the next ones a confirmation. Claims already paid or being paid stay.
+// Returns the sessions approved for the first time; their reputation is counted
+// after the transaction, as testers report in several rounds at once and two
+// settlements holding each other's tester rows would deadlock.
 async function settle(tx: Db, finding: LockedFinding) {
   const findingId = finding.id;
+  const approved: string[] = [];
   await tx.delete(claims).where(and(eq(claims.findingId, findingId), inArray(claims.status, ['review', 'approved'])));
   // Only findings the owner (or the evaluation) accepted pay out
-  if (!finding.severity || !['accepted', 'exported'].includes(finding.status)) return;
+  if (!finding.severity || !['accepted', 'exported'].includes(finding.status)) return approved;
 
   const reports = await tx
     .select({ testerId: testSessions.testerId, sessionId: feedback.sessionId, reputation: testers.reputation })
@@ -156,22 +165,24 @@ async function settle(tx: Db, finding: LockedFinding) {
       amountSats: amount,
       ...state,
     });
-    if (state.status === 'approved') await countApprovedSession(tx, report.sessionId);
+    if (state.status === 'approved' && report.sessionId) approved.push(report.sessionId);
   }
+  return approved;
 }
 
 // After every change of a finding's severity or status
-export function settleFinding(db: Database, findingId: string) {
-  return db.transaction(async (tx) => {
+export async function settleFinding(db: Database, findingId: string) {
+  const approved = await db.transaction(async (tx) => {
     const finding = await lockedFinding(tx, findingId);
-    if (finding) await settle(tx, finding);
+    return finding ? settle(tx, finding) : [];
   });
+  for (const sessionId of approved) await countApprovedSession(db, sessionId);
 }
 
-export function mergeFinding(db: Database, sourceId: string, targetId: string) {
-  return db.transaction(async (tx) => {
+export async function mergeFinding(db: Database, sourceId: string, targetId: string) {
+  const approved = await db.transaction(async (tx) => {
     const target = await lockedFinding(tx, targetId);
-    if (!target) return;
+    if (!target) return [];
     await tx.update(feedback).set({ findingId: targetId }).where(eq(feedback.findingId, sourceId));
     // Payouts already on their way stay with the testers and count as settled for the target
     await tx
@@ -180,8 +191,9 @@ export function mergeFinding(db: Database, sourceId: string, targetId: string) {
       .where(and(eq(claims.findingId, sourceId), inArray(claims.status, ['paying', 'paid'])));
     await tx.delete(claims).where(eq(claims.findingId, sourceId));
     await tx.delete(findings).where(eq(findings.id, sourceId));
-    await settle(tx, target);
+    return settle(tx, target);
   });
+  for (const sessionId of approved) await countApprovedSession(db, sessionId);
 }
 
 // Claims in review whose waiting time is over count as approved
