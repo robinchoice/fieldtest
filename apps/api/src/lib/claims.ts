@@ -2,6 +2,9 @@ import { claims, type Database, feedback, findings, rounds, testers, testSession
 import { type Rewards, type Severity, scaled, severityReward } from '@app/shared';
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 
+// A connection or an open transaction
+type Db = Pick<Database, 'select' | 'insert' | 'update' | 'delete'>;
+
 const HOUR = 60 * 60 * 1000;
 // Claims above the owner's limit wait this long for a decision, then approve themselves
 const REVIEW_HOURS = 48;
@@ -11,11 +14,7 @@ const LOWER = { blocker: 'major', major: 'minor', minor: 'cosmetic' } as const;
 
 // Live rewards of a session collect in one approved claim until the runner
 // picks it up, so testers get a few payments instead of one per screen.
-export async function addLiveReward(
-  db: Pick<Database, 'select' | 'update' | 'insert'>,
-  session: { id: string; roundId: string; testerId: string },
-  sats: number,
-) {
+export async function addLiveReward(db: Db, session: { id: string; roundId: string; testerId: string }, sats: number) {
   if (sats <= 0) return;
   const [grown] = await db
     .update(claims)
@@ -50,7 +49,7 @@ export async function addLiveReward(
 
 // The first approved reward of a session counts toward the tester's reputation:
 // new testers earn half on findings, from 3 sessions the full amount, from 10 a quarter more.
-async function countApprovedSession(db: Database, sessionId: string | null) {
+async function countApprovedSession(db: Db, sessionId: string | null) {
   if (!sessionId) return;
   const [session] = await db
     .update(testSessions)
@@ -70,7 +69,7 @@ async function countApprovedSession(db: Database, sessionId: string | null) {
 // Claims wait for the owner above the limit per claim, and once the tester's finding
 // rewards in this round would pass the limit per tester. So no evaluation alone pays
 // out more than that, however many reports a tester sends.
-async function decision(db: Database, roundId: string, testerId: string, amount: number, rewards: Rewards) {
+async function decision(db: Db, roundId: string, testerId: string, amount: number, rewards: Rewards) {
   const [row] = await db
     .select({ total: sql<number>`coalesce(sum(${claims.amountSats}), 0)::int` })
     .from(claims)
@@ -88,10 +87,12 @@ async function decision(db: Database, roundId: string, testerId: string, amount:
     : { status: 'approved', approveAt: null, approvedAt: now };
 }
 
-// Recomputes what the reporters of a finding get: the first one the reward for
-// its severity, the next ones a confirmation. Claims already paid or being paid stay.
-export async function settleFinding(db: Database, findingId: string) {
-  const [finding] = await db
+// Finding rewards of a round are decided one at a time: the round's row stays
+// locked until the transaction ends, like for the finding numbers in routes/sdk.ts.
+// So the owner and the evaluation can't both settle a finding at once, and the
+// limit per tester holds across findings settled at the same time.
+async function lockedFinding(tx: Db, findingId: string) {
+  const [finding] = await tx
     .select({
       id: findings.id,
       roundId: findings.roundId,
@@ -101,21 +102,29 @@ export async function settleFinding(db: Database, findingId: string) {
     })
     .from(findings)
     .innerJoin(rounds, eq(rounds.id, findings.roundId))
-    .where(eq(findings.id, findingId));
-  if (!finding) return;
+    .where(eq(findings.id, findingId))
+    .for('no key update', { of: rounds });
+  return finding;
+}
 
-  await db.delete(claims).where(and(eq(claims.findingId, findingId), inArray(claims.status, ['review', 'approved'])));
+type LockedFinding = NonNullable<Awaited<ReturnType<typeof lockedFinding>>>;
+
+// Recomputes what the reporters of a finding get: the first one the reward for
+// its severity, the next ones a confirmation. Claims already paid or being paid stay.
+async function settle(tx: Db, finding: LockedFinding) {
+  const findingId = finding.id;
+  await tx.delete(claims).where(and(eq(claims.findingId, findingId), inArray(claims.status, ['review', 'approved'])));
   // Only findings the owner (or the evaluation) accepted pay out
   if (!finding.severity || !['accepted', 'exported'].includes(finding.status)) return;
 
-  const reports = await db
+  const reports = await tx
     .select({ testerId: testSessions.testerId, sessionId: feedback.sessionId, reputation: testers.reputation })
     .from(feedback)
     .innerJoin(testSessions, eq(testSessions.id, feedback.sessionId))
     .innerJoin(testers, eq(testers.id, testSessions.testerId))
     .where(eq(feedback.findingId, findingId))
     .orderBy(asc(feedback.createdAt));
-  const kept = await db
+  const kept = await tx
     .select({ testerId: claims.testerId })
     .from(claims)
     .where(and(eq(claims.findingId, findingId), inArray(claims.status, ['paying', 'paid'])));
@@ -135,8 +144,8 @@ export async function settleFinding(db: Database, findingId: string) {
     const multiplier = first ? report.reputation : 100;
     const amount = Math.round((base * multiplier) / 100);
     if (amount <= 0) continue;
-    const state = await decision(db, finding.roundId, report.testerId, amount, finding.rewards);
-    await db.insert(claims).values({
+    const state = await decision(tx, finding.roundId, report.testerId, amount, finding.rewards);
+    await tx.insert(claims).values({
       roundId: finding.roundId,
       testerId: report.testerId,
       sessionId: report.sessionId,
@@ -147,20 +156,32 @@ export async function settleFinding(db: Database, findingId: string) {
       amountSats: amount,
       ...state,
     });
-    if (state.status === 'approved') await countApprovedSession(db, report.sessionId);
+    if (state.status === 'approved') await countApprovedSession(tx, report.sessionId);
   }
 }
 
-export async function mergeFinding(db: Database, sourceId: string, targetId: string) {
-  await db.update(feedback).set({ findingId: targetId }).where(eq(feedback.findingId, sourceId));
-  // Payouts already on their way stay with the testers and count as settled for the target
-  await db
-    .update(claims)
-    .set({ findingId: targetId })
-    .where(and(eq(claims.findingId, sourceId), inArray(claims.status, ['paying', 'paid'])));
-  await db.delete(claims).where(eq(claims.findingId, sourceId));
-  await db.delete(findings).where(eq(findings.id, sourceId));
-  await settleFinding(db, targetId);
+// After every change of a finding's severity or status
+export function settleFinding(db: Database, findingId: string) {
+  return db.transaction(async (tx) => {
+    const finding = await lockedFinding(tx, findingId);
+    if (finding) await settle(tx, finding);
+  });
+}
+
+export function mergeFinding(db: Database, sourceId: string, targetId: string) {
+  return db.transaction(async (tx) => {
+    const target = await lockedFinding(tx, targetId);
+    if (!target) return;
+    await tx.update(feedback).set({ findingId: targetId }).where(eq(feedback.findingId, sourceId));
+    // Payouts already on their way stay with the testers and count as settled for the target
+    await tx
+      .update(claims)
+      .set({ findingId: targetId })
+      .where(and(eq(claims.findingId, sourceId), inArray(claims.status, ['paying', 'paid'])));
+    await tx.delete(claims).where(eq(claims.findingId, sourceId));
+    await tx.delete(findings).where(eq(findings.id, sourceId));
+    await settle(tx, target);
+  });
 }
 
 // Claims in review whose waiting time is over count as approved
@@ -193,7 +214,9 @@ export async function rejectClaim(db: Database, claimId: string) {
   return !!claim;
 }
 
-// One severity level lower for this payout only, the finding keeps its severity
+// One severity level lower for this payout only, the finding keeps its severity.
+// The update checks the status again: a claim approved and taken by the runner
+// in between keeps its amount, the invoice is already for it.
 export async function lowerClaim(db: Database, claimId: string) {
   const [row] = await db
     .select({ claim: claims, rewards: rounds.rewards })
@@ -206,9 +229,10 @@ export async function lowerClaim(db: Database, claimId: string) {
   );
   if (!current) return false;
   const base = severityReward(row.rewards, LOWER[current]);
-  await db
+  const [lowered] = await db
     .update(claims)
     .set({ baseSats: base, amountSats: Math.round((base * row.claim.multiplier) / 100) })
-    .where(eq(claims.id, claimId));
-  return true;
+    .where(and(eq(claims.id, claimId), eq(claims.status, 'review')))
+    .returning({ id: claims.id });
+  return !!lowered;
 }

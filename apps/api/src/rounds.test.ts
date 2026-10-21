@@ -543,6 +543,33 @@ test('concurrent feedback receives distinct finding numbers', async () => {
   expect(findings.map((finding: Json) => finding.number).sort()).toEqual([1, 2, 3, 4]);
 });
 
+test('concurrent settlements of a finding leave one claim per tester', async () => {
+  const owner = await login();
+  const round = await newRound(owner);
+  const first = await startSession(round.inviteToken);
+  const second = await startSession(round.inviteToken);
+  const anchor = { label: 'Continue', screen: '/backup' };
+  await call('POST', '/sdk/session/feedback', { type: 'bug', text: 'Dead button', anchor }, bearer(first));
+  await call('POST', '/sdk/session/feedback', { type: 'bug', text: 'Dead button too', anchor }, bearer(second));
+  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
+  const [a, b] = findings.sort((x: Json, y: Json) => x.number - y.number);
+  await call('POST', `/rounds/${round.id}/findings/${b.id}/merge`, { into: a.id }, owner);
+
+  // The owner rates while the evaluation settles the same finding: every
+  // settlement recomputes the claims, none may leave a second set behind.
+  const results = await Promise.all(
+    Array.from({ length: 12 }, () =>
+      call('PATCH', `/rounds/${round.id}/findings/${a.id}`, { severity: 'major' }, owner),
+    ),
+  );
+  expect(results.every(([status]) => status === 200)).toBe(true);
+  const payouts = await db.select().from(claims).where(eq(claims.findingId, a.id));
+  expect(payouts.map((p) => [p.kind, p.amountSats]).sort()).toEqual([
+    ['confirm', 100],
+    ['finding', 750],
+  ]);
+});
+
 test('tester text cannot close report delimiters in the evaluation prompt', async () => {
   const round = await newRound(await login());
   const token = await startSession(round.inviteToken);
