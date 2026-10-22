@@ -7,7 +7,7 @@
 
 ## Checks
 
-`bun run check && bun run test` (`test` baut das Web und testet den Build). Die Browser-Tests starten API und Web auf eigenen Ports (53100, 54100). Testet ein anderer Worktree gleichzeitig, mit anderen Ports aufrufen: `TEST_API_PORT=53101 TEST_WEB_PORT=54101 bun run test`.
+`bun run check && bun run test` (`test` baut das Web und testet den Build). Die Browser-Tests starten API und Web auf eigenen Ports (31100, 31101), unter dem ephemeren Linux-Portbereich (32768–60999), damit ausgehende Verbindungen sie nicht kurzzeitig belegen. Testet ein anderer Worktree gleichzeitig, mit anderen Ports unter 32768 aufrufen: `TEST_API_PORT=31102 TEST_WEB_PORT=31103 bun run test`.
 
 ## Deploy
 
@@ -16,6 +16,7 @@
 
 ## Fallen
 
+- Secret-Scan: Gitleaks 8.30.1 liest zusätzlich zu `--gitleaks-ignore-path` auch `.gitleaksignore` aus dem Checkout. Der Workflow ersetzt diese Datei deshalb ebenfalls durch die Fassung aus `CONFIG_REF`, bei Fork-PRs also aus dem Base-Commit.
 - Fieldtest verwahrt nie Geld: keine Guthaben, keine Wallet-Secrets der Owner auf dem Server, keine eigene Cashu-Mint, kein Tausch. Ausgezahlt wird nur über den Runner des Owners. Sonst wäre eine MiCA-Erlaubnis nötig.
 - Live-Belohnungen berechnet die API (`lib/sessions.ts`), dem Overlay wird nichts geglaubt außer „aktiv in diesem 10-Sekunden-Fenster“, und auch das nur bis zur verstrichenen Zeit.
 - Geldbeträge in Sats als ganze Zahlen, Reputation und Skalierung in Prozent.
@@ -27,10 +28,12 @@
 Stack und Aufbau: siehe README.md. Gestaltung: siehe DESIGN.md.
 
 - Neue Tabelle: `packages/db/src/schema.ts` ändern, `bun run db:generate`. Die Migration läuft beim nächsten API-Start, `migrateDb` lässt mehrere Instanzen nacheinander migrieren. Jede Migration muss mit dem noch laufenden alten Code funktionieren: Spalten nullable oder mit Default hinzufügen, Umbenennen und Löschen erst im Deploy danach. Nichts von Hand in der Datenbank ändern.
+- Korrelierte Subselects in `sql`-Templates: Bei einem `select` aus nur einer Tabelle rendert Drizzle Spalten ohne Tabellennamen, auch im Template. `exists (select 1 from ${subs} where ${subs.userId} = ${users.id})` wird zu `where "user_id" = "id"`, `"id"` meint dann die Spalte des Subselects, das Ergebnis ist ohne Fehler falsch. Solche Subselects nur in Abfragen mit Join oder mit `alias()`, sonst zwei einfache Abfragen.
 - Neue Route: Datei in `apps/api/src/routes`, in `app.ts` einhängen. `requireAuth` für eingeloggte Nutzer (danach `c.get('user')`), `validJson(schema)` mit dem Schema aus `packages/shared`.
 - Fehler antworten immer als `{ error: string }` in der Sprache aus `Accept-Language`: `t(c).<key>` aus `lib/i18n.ts`, eigene zod-Meldungen sind Keys aus `messages.ts`. Das Web zeigt ihn als Toast.
 - Jeder neue Text kommt auf Deutsch und Englisch in `packages/shared/src/messages.ts`, im Web über `t()` aus `$lib/i18n`. Das Tester-Overlay hat eigene Texte in `packages/sdk/src/messages.ts`.
 - Alles, was Mails verschickt oder Geheimnisse prüft, bekommt ein `rateLimit` aus `lib/rate-limit.ts`. Die Zähler liegen in Postgres und gelten für alle API-Instanzen.
+- Öffentliche Formulare ohne Login, die Mails verschicken oder Daten anlegen, prüfen ALTCHA (README, „ALTCHA“): `requireAltcha` vor `validJson`, im Web `Altcha.svelte` im Formular. Nicht für Links aus Mails wie Abmelden oder Login-Link und nicht für Wege mit Einladungstoken wie das Overlay der Testpersonen, die tragen schon ein Geheimnis.
 - Mails über `sendMail` aus `lib/mail.ts`, im Design der Vorlage dort (DESIGN.md, „Mails“).
 - Update-Mails (README, „Update-Mails“): nur mit Opt-in, Standard aus. Agenten schreiben Entwürfe als `updates/<datum>-<thema>.md` in beiden Sprachen, senden darf nur ein Admin aus `ADMIN_EMAILS` in `/admin/updates`. Kein Agent löst den Versand aus, auch nicht per API oder Datenbank. Jede Massenmail an Nutzer läuft über diesen Weg, also mit Abmeldelink und `List-Unsubscribe`.
 - Registrierung geschlossen bis zu Robins Go: Neue Konten nur für Adressen in `SIGNUP_ALLOWLIST`, bestehende melden sich immer an. `SIGNUP_OPEN=true` erst nach Robins ausdrücklichem Go setzen (README, „Registrierung öffnen“). Tester lädt ein Admin aus `ADMIN_EMAILS` in der App ein (`/auth/invite`, Seite `/invite`), das öffnet nichts. Dort steht robin@pleasance.org, der menschliche Admin. admin@pleasance.org, der agentische Admin für die Savor-Vorschau, kommt nie in `ADMIN_EMAILS`, sonst legen Agenten Konten an und mailen Dritte. Wer einen weiteren Weg baut, auf dem Konten entstehen, prüft dort ebenfalls `mayLogIn` aus `lib/signup.ts`. Testpersonen einer Runde (Einladungslink, Overlay, Demo) legen keine Konten an, sondern nur Zeilen in `testers` mit ihrer Lightning-Adresse, und bleiben davon unberührt, ebenso geteilte Berichte.

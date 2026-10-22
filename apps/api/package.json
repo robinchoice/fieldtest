@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "bun --env-file=../../.env --hot src/index.ts",
     "worker": "bun --env-file=../../.env --hot src/worker.ts",
-    "test": "bun test --env-file=../../.env",
+    "test": "bun --env-file=../../.env ../../packages/db/test.ts bun test",
     "check": "tsc --noEmit"
   },
   "dependencies": {
@@ -15,6 +15,7 @@
     "@hono/zod-validator": "^0.9.1",
     "@sentry/bun": "^11.4.0",
     "@simplewebauthn/server": "^14.0.3",
+    "altcha-lib": "^2.7.0",
     "drizzle-orm": "^0.45.3",
     "hono": "^4.13.12",
     "light-bolt11-decoder": "^3.2.0",

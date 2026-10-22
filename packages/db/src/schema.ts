@@ -95,6 +95,13 @@ export const rateLimits = pgTable('rate_limits', {
   resetAt: timestamp('reset_at').notNull(),
 });
 
+// Keys the API generates on first use, so every instance shares them and no
+// deployment has to set them. `altcha` signs the challenges of lib/altcha.ts.
+export const serverSecrets = pgTable('server_secrets', {
+  name: varchar('name', { length: 50 }).primaryKey(),
+  value: varchar('value', { length: 128 }).notNull(),
+});
+
 // A test round of one product. Testers join through the invite link.
 export const rounds = pgTable('rounds', {
   id: uuid('id').defaultRandom().primaryKey(),

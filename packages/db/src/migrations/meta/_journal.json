@@ -64,6 +64,13 @@
       "when": 1792275030528,
       "tag": "0008_bouncy_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792669736876,
+      "tag": "0009_wandering_satana",
+      "breakpoints": true
     }
   ]
 }

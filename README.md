@@ -30,7 +30,7 @@ Web läuft auf http://localhost:5173, die API auf Port 3000. Ohne `SMTP_HOST` st
 | `packages/db` | Drizzle-Schema und Migrationen |
 | `packages/shared` | Name, Farbband, zod-Schemas, Texte auf Deutsch und Englisch (`messages.ts`) |
 
-Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`, in `apps/web` außerdem `og-image` (Vorschaubild für geteilte Links, DESIGN.md). Die Browser-Tests in `test` bauen das Web und starten API und Web-Build selbst auf eigenen Ports 53100 und 54100, nie die laufenden Dev-Server, so greift die CSP wie in Produktion; testen zwei Worktrees gleichzeitig, bekommt einer andere per `TEST_API_PORT` und `TEST_WEB_PORT`.
+Befehle: `bun run dev`, `check` (Biome und Typen), `format`, `test`, `build`, `db:generate`, in `apps/web` außerdem `og-image` (Vorschaubild für geteilte Links, DESIGN.md). Die Browser-Tests in `test` bauen das Web und starten API und Web-Build selbst auf eigenen Ports 31100 und 31101, nie die laufenden Dev-Server, so greift die CSP wie in Produktion; testen zwei Worktrees gleichzeitig, bekommt einer andere per `TEST_API_PORT` und `TEST_WEB_PORT`, etwa 31102 und 31103. Testports bleiben unter dem ephemeren Linux-Portbereich (32768–60999), damit ausgehende Verbindungen sie nicht kurzzeitig belegen. API- und Browser-Tests bekommen über `bun run test` jeweils eine eigene leere Datenbank auf dem Server aus `DATABASE_URL`. Die Browser-Tests übernehmen aus `.env` nur `DATABASE_URL`, SMTP und der Claude-Schlüssel bleiben aus den Testservern. Der Datenbanknutzer braucht dafür `CREATEDB` (der lokale Compose- und der CI-Nutzer haben es bereits). Nach Erfolg, Fehler oder Abbruch per SIGINT/SIGTERM wird nur diese temporäre Datenbank gelöscht; die vorhandene Datenbank bleibt unverändert. Auch `bun run test` in `apps/api` bzw. `apps/web` nutzt diese Isolation; direkte Aufrufe von `bun test` oder `playwright test` umgehen sie.
 
 ## Secret-Scan
 
@@ -108,6 +108,15 @@ Agenten zeigen Änderungen hinter dem Login in der Savor-Vorschau mit dem Testko
 - Das Overlay bringt seine Styles als `<style>` im Shadow DOM mit. Prototypen mit strenger CSP müssen `style-src 'unsafe-inline'` erlauben, sonst bleibt das Overlay ungestylt.
 - Der Runner läuft aus dem Repo, ein eigenes Image dafür baut die CI noch nicht.
 - Rechtlich: Fieldtest verwahrt nichts und überweist nicht selbst. Ob das Runner-Modell ohne MiCA-Erlaubnis auskommt, sollte die BaFin bestätigen (Fintech-Kontaktformular, Frage nach Erlaubnispflicht).
+
+## ALTCHA
+
+Die Login-Mails (`/auth/magic-link`, `/auth/code`) schützt [ALTCHA](https://altcha.org) (MIT, Proof of Work, ohne Cookies und ohne Drittanbieter): Vor dem Absenden rechnet der Browser eine kleine Aufgabe, die API prüft die Lösung. Es ergänzt die Rate-Limits: Jede Anfrage kostet Rechenzeit, und ohne Lösung kann niemand die Limits einer fremden Adresse aufbrauchen.
+
+- API: `GET /api/v1/altcha` gibt eine Challenge aus (`altcha-lib`, PBKDF2/SHA-256, 10 Minuten gültig). `requireAltcha` aus `lib/altcha.ts` steht vor `validJson`, liest das Feld `altcha` im JSON-Body und antwortet sonst mit 403 und `altchaFailed`. Jede Lösung gilt einmal, das merkt sich ein Zähler in `rate_limits`. Den HMAC-Schlüssel erzeugt die API beim ersten Aufruf und legt ihn in `server_secrets` ab, alle Instanzen teilen ihn, eine Env-Variable braucht es nicht.
+- Web: `Altcha.svelte` ins Formular, mit `bind:payload` und `bind:this`. Das erste Absenden startet die Rechnung, danach schickt das Widget das Formular selbst noch einmal ab. Der Handler übergeht deshalb Absenden ohne Payload und ruft nach einem Fehler `reset()` auf, Vorbild `routes/login/+page.svelte`. Das Widget kommt aus `altcha/external` mit eigener CSS- und Worker-Datei, so bleibt die CSP ohne Ausnahme. Seine Texte bringt es auf Deutsch und Englisch mit, die Sprache folgt dem Umschalter. Das Sammeln von Zeiger- und Scrolldaten (`humanInteractionSignature`) ist aus.
+- Schwierigkeit: `COST` und Zählerbereich in `apps/api/src/lib/altcha.ts`. Auf einem Laptop rechnet der Browser 0,1–0,5 s, das Widget zeigt mindestens 0,5 s. Nur erhöhen, wenn Bots durchkommen.
+- Tests: `apps/api/src/testing.ts` löst Challenges für die API-Tests, der Browser-Test rechnet mit dem echten Widget.
 
 ## Passkeys
 

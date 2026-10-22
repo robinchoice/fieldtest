@@ -9,8 +9,8 @@ import { createApp } from './app';
 import { updateMail } from './lib/mail';
 import { deliverNext, parseDraft, readDrafts, redact } from './lib/updates';
 import { generateToken, hashToken } from './middleware/auth';
+import { altchaPayload } from './testing';
 
-// Runs against DATABASE_URL like auth.test.ts, with fresh accounts only
 const db = createDb(process.env.DATABASE_URL!);
 const app = createApp(db);
 const log = spyOn(console, 'log');
@@ -54,7 +54,12 @@ const lastMailedToken = () =>
     ?.match(/token=([0-9a-f]+)/)?.[1];
 
 async function logInWithLink(email: string, updates?: boolean, locale = 'de') {
-  await request('POST', '/auth/magic-link', { email, updates }, { 'accept-language': locale });
+  await request(
+    'POST',
+    '/auth/magic-link',
+    { email, updates, altcha: await altchaPayload(app) },
+    { 'accept-language': locale },
+  );
   return body(request('POST', '/auth/verify', { token: lastMailedToken() }, { 'accept-language': locale }));
 }
 
@@ -75,7 +80,12 @@ const userRow = async (email: string) => (await db.select().from(users).where(eq
 
 test('the ticked checkbox opts in once the link is opened, the unticked one changes nothing', async () => {
   const email = freshEmail();
-  await request('POST', '/auth/magic-link', { email, updates: true }, { 'accept-language': 'en' });
+  await request(
+    'POST',
+    '/auth/magic-link',
+    { email, updates: true, altcha: await altchaPayload(app) },
+    { 'accept-language': 'en' },
+  );
   // The login mail says what opening the link confirms
   const mailed = log.mock.calls.map((args) => String(args[0])).findLast((line) => line.startsWith('[mail]'));
   expect(mailed).toContain(`Logging in with this also turns on email updates from ${APP_NAME}.`);

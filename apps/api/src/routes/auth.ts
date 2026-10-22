@@ -11,6 +11,7 @@ import {
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
+import { requireAltcha } from '../lib/altcha';
 import { locale, t } from '../lib/i18n';
 import { sendLoginCodeEmail, sendMagicLinkEmail } from '../lib/mail';
 import { clientIp, rateLimit, tooManyRequests } from '../lib/rate-limit';
@@ -97,7 +98,7 @@ async function mailMagicLink(c: Context<AppEnv>, email: string, next: string | n
 }
 
 export const authRoutes = new Hono<AppEnv>()
-  .post('/magic-link', validJson(magicLinkSchema), async (c) => {
+  .post('/magic-link', requireAltcha, validJson(magicLinkSchema), async (c) => {
     const { email, next, updates } = c.req.valid('json');
     if (!(await mailsPerIp.hit(c, clientIp(c))) || !(await mailsPerAddress.hit(c, email))) return tooManyRequests(c);
     if (!(await mayLogIn(c.get('db'), email))) return c.json({ error: t(c).signupClosed }, 403);
@@ -142,7 +143,7 @@ export const authRoutes = new Hono<AppEnv>()
   })
 
   // Mobile apps: a 6-digit code by mail instead of a link
-  .post('/code', validJson(loginCodeSchema), async (c) => {
+  .post('/code', requireAltcha, validJson(loginCodeSchema), async (c) => {
     const { email, updates } = c.req.valid('json');
     if (!(await mailsPerIp.hit(c, clientIp(c))) || !(await mailsPerAddress.hit(c, email))) return tooManyRequests(c);
     if (!(await mayLogIn(c.get('db'), email))) return c.json({ error: t(c).signupClosed }, 403);

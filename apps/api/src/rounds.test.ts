@@ -4,8 +4,8 @@ import { eq, sql } from 'drizzle-orm';
 import { createApp } from './app';
 import { type Ask, evaluateFeedback, runNextEvaluation } from './lib/evaluate';
 import { checkPayment } from './lib/payments';
+import { altchaPayload } from './testing';
 
-// Runs against DATABASE_URL like auth.test.ts. Every test round and tester is new.
 const db = createDb(process.env.DATABASE_URL!);
 const app = createApp(db);
 const log = spyOn(console, 'log');
@@ -33,7 +33,7 @@ async function call(
 
 async function login() {
   const email = `owner-${crypto.randomUUID()}@example.com`;
-  await call('POST', '/auth/magic-link', { email });
+  await call('POST', '/auth/magic-link', { email, altcha: await altchaPayload(app) });
   const mail = log.mock.calls.map((args) => String(args[0])).findLast((line) => line.startsWith('[mail]'));
   const token = mail!.match(/token=([0-9a-f]+)/)![1];
   const res = await app.request('/api/v1/auth/verify', {

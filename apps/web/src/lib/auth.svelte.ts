@@ -16,9 +16,10 @@ export async function checkAuth() {
   auth.user = (await api.get<{ user: User | null }>('/auth/me', true).catch(() => ({ user: null }))).user;
 }
 
-// updates: the unticked checkbox for update mails, counts once the link is opened
-export function sendMagicLink(email: string, next: string | null, updates: boolean) {
-  return api.post('/auth/magic-link', { email, next: next ?? undefined, updates });
+// updates: the unticked checkbox for update mails, counts once the link is opened.
+// altcha: the payload of the widget in the form.
+export function sendMagicLink(email: string, next: string | null, updates: boolean, altcha: string) {
+  return api.post('/auth/magic-link', { email, next: next ?? undefined, updates, altcha });
 }
 
 // Silent: the verify page shows the error itself

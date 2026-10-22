@@ -1,17 +1,13 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { parseEnv } from 'node:util';
 import { defineConfig, devices } from '@playwright/test';
 
-// The tests write to DATABASE_URL like the API tests. The CI sets it directly.
-const envFile = new URL('../../.env', import.meta.url);
-const databaseUrl = existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8')).DATABASE_URL : undefined;
-if (databaseUrl) process.env.DATABASE_URL ??= databaseUrl;
+// packages/db/test.ts supplies a temporary DATABASE_URL. Nothing else comes from
+// .env, so SMTP and the Claude key stay out of the test servers.
 
 // Own ports and fresh servers, so the tests never run against the dev server of another
 // worktree or project. Worktrees testing at the same time pick other ports via
-// TEST_API_PORT and TEST_WEB_PORT.
-const API_PORT = Number(process.env.TEST_API_PORT ?? 53100);
-const WEB_PORT = Number(process.env.TEST_WEB_PORT ?? 54100);
+// TEST_API_PORT and TEST_WEB_PORT. Keep them below Linux's ephemeral range (32768–60999).
+const API_PORT = Number(process.env.TEST_API_PORT ?? 31100);
+const WEB_PORT = Number(process.env.TEST_WEB_PORT ?? 31101);
 const API = `http://localhost:${API_PORT}`;
 const WEB = `http://localhost:${WEB_PORT}`;
 
