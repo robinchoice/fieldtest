@@ -46,8 +46,8 @@ let key: string | undefined;
 async function hmacKey(db: Database) {
   if (key) return key;
   const value = generateToken();
-  await db.insert(serverSecrets).values({ name: 'altcha', value }).onConflictDoNothing();
-  const [row] = await db.select().from(serverSecrets).where(eq(serverSecrets.name, 'altcha'));
+  let [row] = await db.insert(serverSecrets).values({ name: 'altcha', value }).onConflictDoNothing().returning();
+  if (!row) [row] = await db.select().from(serverSecrets).where(eq(serverSecrets.name, 'altcha'));
   key = row!.value;
   return key;
 }

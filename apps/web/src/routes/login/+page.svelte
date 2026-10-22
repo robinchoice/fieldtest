@@ -95,12 +95,10 @@
       await sendMagicLink(email, next, updates, altcha);
       sent = true;
       code = '';
-      // Used up: another address gets a new widget that solves again
-      altcha = '';
     } catch {
       // The API client already shows the error as a toast
-      altchaWidget?.reset();
     } finally {
+      altchaWidget?.reset();
       loading = false;
     }
   }

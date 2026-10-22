@@ -13,7 +13,7 @@
     import('$lib/altcha');
   });
 
-  // Each solution counts once, after a failed request the form needs a new one
+  // Each solution counts once, after a request the form needs a new one
   export function reset() {
     payload = '';
     widget?.reset();

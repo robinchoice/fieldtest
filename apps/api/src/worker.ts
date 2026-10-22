@@ -12,16 +12,12 @@ import { captureException } from './monitoring';
 // rows in Postgres, so a restart loses nothing and several workers share them.
 const db = createDb(process.env.DATABASE_URL);
 const interval = Number(process.env.UPDATE_MAIL_INTERVAL_MS || 6000);
-const stop = new AbortController();
-
 // Finish mail transactions and cancel Claude requests, returning their jobs
 // for the next worker without consuming an attempt.
-function shutdown() {
-  stop.abort();
-}
+const stop = new AbortController();
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => stop.abort());
+process.on('SIGINT', () => stop.abort());
 
 // For the healthcheck in docker-compose.prod.yml
 const server = Bun.serve({ port: Number(process.env.PORT || 3001), fetch: () => Response.json({ status: 'ok' }) });
