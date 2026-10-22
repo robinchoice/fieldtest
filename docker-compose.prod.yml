@@ -16,6 +16,7 @@ services:
 
   api:
     image: ${IMAGE_PREFIX:?IMAGE_PREFIX is required}-api:${IMAGE_TAG:?IMAGE_TAG is required}
+    stop_grace_period: 30s
     environment:
       - DATABASE_URL=postgresql://app:${POSTGRES_PASSWORD}@postgres:5432/app
       - APP_URL=${APP_URL}
@@ -37,6 +38,7 @@ services:
   # reports with Claude and sends update mails. Starts once the API has migrated the database.
   worker:
     image: ${IMAGE_PREFIX:?IMAGE_PREFIX is required}-api:${IMAGE_TAG:?IMAGE_TAG is required}
+    stop_grace_period: 30s
     command: ["bun", "apps/api/src/worker.ts"]
     environment:
       - DATABASE_URL=postgresql://app:${POSTGRES_PASSWORD}@postgres:5432/app

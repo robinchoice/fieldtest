@@ -37,6 +37,8 @@ export function rateLimit(name: string, limit: number, windowMs: number) {
 
 // The reverse proxy in front of the web app sets X-Forwarded-For and the web
 // app passes it through. Its last entry is the address the proxy saw.
+// With an LB before Traefik this can be the LB, even with trustedIPs. Verify
+// the complete header chain before adding proxies.
 export function clientIp(c: Context) {
   return c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim() || 'unknown';
 }
