@@ -24,7 +24,7 @@ export const evaluationSchema = z.object({
 });
 
 export type Evaluation = z.infer<typeof evaluationSchema>;
-export type Ask = (prompt: string) => Promise<Evaluation | null>;
+export type Ask = (prompt: string, signal?: AbortSignal) => Promise<Evaluation | null>;
 
 const SYSTEM = `You triage reports from paid testers of software prototypes. Testers earn sats for reports, so judge from the recorded session, not from what the report claims about itself.
 
@@ -43,18 +43,21 @@ let client: Anthropic | undefined;
 const escapePrompt = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
 // Claude Opus 5.5 with structured output. "default" fallbacks retry a declined request on another model.
-const askClaude: Ask = async (prompt) => {
+const askClaude: Ask = async (prompt, signal) => {
   if (!evaluationEnabled()) return null;
   client ??= new Anthropic();
-  const response = await client.beta.messages.parse({
-    model: 'claude-opus-5-5',
-    max_tokens: 16000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    system: SYSTEM,
-    output_config: { format: betaZodOutputFormat(evaluationSchema) },
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const response = await client.beta.messages.parse(
+    {
+      model: 'claude-opus-5-5',
+      max_tokens: 16000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      system: SYSTEM,
+      output_config: { format: betaZodOutputFormat(evaluationSchema) },
+      messages: [{ role: 'user', content: prompt }],
+    },
+    { signal },
+  );
   return response.stop_reason === 'refusal' ? null : response.parsed_output;
 };
 
@@ -145,7 +148,8 @@ const MAX_ATTEMPTS = 3;
 // Claims the oldest due job and evaluates it. A failed evaluation is tried again
 // when the lease runs out, after MAX_ATTEMPTS the finding stays with the owner.
 // Returns false when no job is due.
-export async function runNextEvaluation(db: Database, ask: Ask = askClaude) {
+export async function runNextEvaluation(db: Database, ask: Ask = askClaude, signal?: AbortSignal) {
+  if (signal?.aborted) return false;
   const due = db
     .select({ id: evaluationJobs.feedbackId })
     .from(evaluationJobs)
@@ -167,9 +171,16 @@ export async function runNextEvaluation(db: Database, ask: Ask = askClaude) {
     return true;
   }
   try {
-    await evaluateFeedback(db, job.feedbackId, ask);
+    await evaluateFeedback(db, job.feedbackId, (prompt) => ask(prompt, signal));
     await done();
   } catch (err) {
+    if (signal?.aborted) {
+      await db
+        .update(evaluationJobs)
+        .set({ runAt: sql`now()`, attempts: job.attempts - 1 })
+        .where(and(eq(evaluationJobs.feedbackId, job.feedbackId), eq(evaluationJobs.attempts, job.attempts)));
+      return true;
+    }
     console.error(`[worker] Evaluation of feedback ${job.feedbackId} failed:`, err);
     captureException(err);
   }

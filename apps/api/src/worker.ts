@@ -14,8 +14,8 @@ const db = createDb(process.env.DATABASE_URL);
 const interval = Number(process.env.UPDATE_MAIL_INTERVAL_MS || 6000);
 const stop = new AbortController();
 
-// Both loops finish the job they hold, then the worker exits. A job cut off by
-// the kill after stop_grace_period comes up again when its lease runs out.
+// Finish mail transactions and cancel Claude requests, returning their jobs
+// for the next worker without consuming an attempt.
 function shutdown() {
   stop.abort();
 }
@@ -32,7 +32,7 @@ const pause = (ms: number) => sleep(ms, undefined, { signal: stop.signal }).catc
 async function evaluations() {
   while (!stop.signal.aborted) {
     try {
-      if (await runNextEvaluation(db)) continue;
+      if (await runNextEvaluation(db, undefined, stop.signal)) continue;
     } catch (err) {
       console.error('[worker] Claiming a job failed:', err);
       captureException(err);

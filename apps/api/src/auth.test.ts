@@ -114,6 +114,7 @@ test('login mails need an ALTCHA solution that is valid and unused', async () =>
   const wrong = { ...solution, counter: solution.counter + 1 };
   for (const forged of [
     { challenge: easier, solution },
+    { challenge: { ...challenge, signature: undefined }, solution },
     { challenge, solution: wrong },
   ])
     expect((await send('/auth/code', { email, altcha: btoa(JSON.stringify(forged)) })).status).toBe(403);

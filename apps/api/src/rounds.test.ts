@@ -423,8 +423,8 @@ test('the worker evaluates reports and takes up jobs left behind again', async (
   const job = async (feedbackId: string) =>
     (await db.select().from(evaluationJobs).where(eq(evaluationJobs.feedbackId, feedbackId)))[0];
   // Jobs of other tests are dropped unchanged
-  const work = async (ask: Ask) => {
-    while (await runNextEvaluation(db, ask));
+  const work = async (ask: Ask, signal?: AbortSignal) => {
+    while (!signal?.aborted && (await runNextEvaluation(db, ask, signal)));
   };
 
   const text = `Save loses the draft ${crypto.randomUUID()}`;
@@ -453,6 +453,24 @@ test('the worker evaluates reports and takes up jobs left behind again', async (
   expect(await job(first.id)).toBeUndefined();
   const { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
   expect(findings[0]).toMatchObject({ title: 'Draft lost', severity: 'minor', status: 'new' });
+
+  // A graceful shutdown releases the lease without consuming an attempt.
+  const interruptedText = `Interrupted evaluation ${crypto.randomUUID()}`;
+  const interrupted = await report(interruptedText);
+  const stop = new AbortController();
+  await work(async (prompt, signal) => {
+    if (prompt.includes(interruptedText)) {
+      expect(signal).toBe(stop.signal);
+      stop.abort();
+      signal?.throwIfAborted();
+    }
+    return null;
+  }, stop.signal);
+  const released = await job(interrupted.id);
+  expect(released!.attempts).toBe(0);
+  expect(released!.runAt.getTime()).toBeLessThanOrEqual(Date.now());
+  await work(async () => null);
+  expect(await job(interrupted.id)).toBeUndefined();
 
   // After three attempts the report stays with the owner
   const poison = `Crashes the worker ${crypto.randomUUID()}`;

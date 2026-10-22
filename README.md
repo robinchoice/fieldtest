@@ -90,6 +90,27 @@ Fremde Agenten lesen die öffentlichen Inhalte ohne HTML, nach [llms.txt](https:
 
 Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional und geht nur an den Service `worker`. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
 
+### Stoppen und weitere Instanzen
+
+API und Worker behandeln `SIGTERM` und `SIGINT`: Die API nimmt keine neuen Verbindungen an und wartet auf laufende Antworten, der Worker holt keine weiteren Aufträge und beendet die laufende Zustellung samt Transaktion. Laufende Claude-Aufrufe bricht er ab und gibt deren Auftrag sofort wieder frei, ohne einen Versuch zu zählen. Danach schließen sie den Postgres-Pool. Auch während des API-Starts wartet der Shutdown auf Migration und Import. Compose lässt dafür 30 Sekunden Zeit (`stop_grace_period`), erst danach erzwingt Docker den Abbruch. SMTP hat dafür begrenzte DNS-, Verbindungs- und Begrüßungswartezeiten (je 5 s) sowie 10 s für einen inaktiven Socket. Das ist keine Obergrenze für die gesamte Zustellung; ein langsamer, weiter antwortender Server oder eine lange Datenbankabfrage kann das Shutdown-Budget weiterhin überschreiten.
+
+Zuerst Apps auf mehrere Server verteilen, erst bei Bedarf eine einzelne App replizieren (`infra.md`, „Skalierung“). Der Compose-Standard bleibt eine App mit lokalem Postgres. Eine weitere Instanz verwendet dieselbe Datenbank über das private Netz. Dafür neben `docker-compose.prod.yml` eine lokale, nicht eingecheckte Datei `compose.replica.yml` anlegen (Compose mit Unterstützung für `!reset`):
+
+```yaml
+services:
+  api:
+    environment:
+      - DATABASE_URL=${DATABASE_URL:?Shared database URL is required}
+    depends_on: !reset {}
+  worker:
+    environment:
+      - DATABASE_URL=${DATABASE_URL:?Shared database URL is required}
+```
+
+`DATABASE_URL` in der Env dieser Instanz auf die gemeinsame Datenbank setzen und mit `docker compose -f docker-compose.prod.yml -f compose.replica.yml up -d web api worker` starten. Damit startet dort kein Postgres; der Worker wartet weiterhin auf die gesunde API. Alle Instanzen brauchen dieselbe App-Konfiguration und denselben Stand. Datenbankzugriff nur aus dem privaten Netz der App-Server erlauben, nicht öffentlich freigeben. Den Override auch bei späteren Deploys verwenden; die Standard-CI richtet diese Topologie nicht automatisch ein.
+
+Die Client-IP für Rate-Limits ist der letzte Eintrag in `X-Forwarded-For`. Hinter einem einzelnen Proxy ist das dessen Gegenstelle. Bei Hetzner-LB → Traefik → Web reicht `forwardedHeaders.trustedIPs` allein nicht: Ohne Vertrauen verwirft Traefik den vom LB gesetzten Header; mit Vertrauen bleibt er erhalten, aber Traefik hängt standardmäßig die LB-IP an. Dann teilen sich alle Clients die IP-Limits. Vor dieser Topologie die ganze Header-Kette mit zwei verschiedenen Client-IPs und einem gefälschten Header prüfen. Am API-Eingang muss der letzte Eintrag die echte Client-IP sein. Bei Traefik-Versionen mit `forwardedHeaders.notAppendXForwardedFor` kann ein eigener, nur vom LB erreichbarer EntryPoint den Header unverändert weitergeben; `trustedIPs` dabei auf die tatsächlichen LB-Adressen begrenzen. Niemals pauschal dem ersten Header-Eintrag oder allen Absendern vertrauen.
+
 ## Registrierung öffnen
 
 Fieldtest ist von außen erreichbar, aber geschlossen, bis Robin ausdrücklich das Go gibt, externe Nutzer aufzunehmen. Bis dahin legen Magic Link und App-Code neue Konten nur für die Adressen in `SIGNUP_ALLOWLIST` an (kommagetrennt, dauerhafte Adressen wie Robins). Bestehende Konten melden sich immer an, Passkeys gibt es nur für sie. Fremde bekommen bei `/auth/magic-link` und `/auth/code` die Meldung „Die Registrierung ist noch geschlossen“, es geht keine Mail raus. Auch beim Einlösen von Links und Codes wird die aktuelle Freigabe geprüft: Eine inzwischen entfernte Adresse ohne Konto bekommt 403, selbst wenn der Link oder Code vorher verschickt wurde. Dieselbe Prüfung gilt zentral vor jeder Session-Erstellung, auch für Passkeys. Seiten ohne Login bleiben offen: geteilte Berichte, der Demo-Prototyp und alles, was Testpersonen einer Runde über deren Einladungslink und das Overlay tun. Testpersonen haben kein Konto, sie hängen an ihrer Lightning-Adresse.
