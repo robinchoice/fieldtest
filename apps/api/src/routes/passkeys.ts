@@ -1,10 +1,8 @@
 import { passkeyChallenges, passkeys, users } from '@app/db';
 import { APP_NAME, type Passkey, passkeyLoginSchema, passkeyRegisterSchema } from '@app/shared';
 import {
-  type AuthenticationResponseJSON,
   generateAuthenticationOptions,
   generateRegistrationOptions,
-  type RegistrationResponseJSON,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
@@ -89,7 +87,7 @@ export const passkeyRoutes = new Hono<AppEnv>()
       userName: user.email,
       userDisplayName: user.name,
       userID: new TextEncoder().encode(user.id),
-      excludeCredentials: existing.map(({ id, transports }) => ({ id, transports: transports ?? undefined })),
+      excludeCredentials: existing.map(({ id, transports }) => (transports ? { id, transports } : { id })),
       // Discoverable, so the login needs no address and the browser can offer it as autofill
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
     });
@@ -101,7 +99,7 @@ export const passkeyRoutes = new Hono<AppEnv>()
     const user = c.get('user');
     const { rpID, origins } = relyingParty();
     const result = await verifyRegistrationResponse({
-      response: c.req.valid('json').response as unknown as RegistrationResponseJSON,
+      response: c.req.valid('json').response,
       expectedChallenge: useChallenge(c, user.id),
       expectedOrigin: origins,
       expectedRPID: rpID,
@@ -165,7 +163,7 @@ export const passkeyRoutes = new Hono<AppEnv>()
 
     const { rpID, origins } = relyingParty();
     const result = await verifyAuthenticationResponse({
-      response: response as unknown as AuthenticationResponseJSON,
+      response,
       expectedChallenge: useChallenge(c, null),
       expectedOrigin: origins,
       expectedRPID: rpID,
@@ -173,7 +171,7 @@ export const passkeyRoutes = new Hono<AppEnv>()
         id: passkey.id,
         publicKey: new Uint8Array(passkey.publicKey),
         counter: passkey.counter,
-        transports: passkey.transports ?? undefined,
+        ...(passkey.transports && { transports: passkey.transports }),
       },
       requireUserVerification: false,
     }).catch(() => null);

@@ -20,7 +20,7 @@ test('a shared report previews with its round, unknown links with the general pr
     const [owner] = await sql`insert into users (email, name)
       values (${`e2e-${crypto.randomUUID()}@example.com`}, 'E2E') returning id`;
     await sql`insert into rounds (owner_id, product, name, prototype_url, goals, rewards, invite_token, share_token)
-      values (${owner.id}, 'Pebble Wallet', 'Onboarding', 'https://example.com', ${sql.json([])},
+      values (${owner!.id}, 'Pebble Wallet', 'Onboarding', 'https://example.com', ${sql.json([])},
         ${sql.json(DEFAULT_REWARDS)}, ${randomBytes(16).toString('hex')}, ${token})`;
   } finally {
     await sql.end();

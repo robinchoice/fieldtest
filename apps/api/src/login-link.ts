@@ -2,14 +2,13 @@
 // agent can log the Savor preview into the live app without the mail. Needs
 // DATABASE_URL and APP_URL, so it runs in the api container:
 //   bun apps/api/src/login-link.ts <email>
+import './env';
 import { createDb, magicLinks, users } from '@app/db';
 import { magicLinkSchema } from '@app/shared';
 import { generateToken, hashToken } from './middleware/auth';
 
 const { email } = magicLinkSchema.parse({ email: process.argv[2] });
-const appUrl = process.env.APP_URL;
-if (!appUrl) throw new Error('APP_URL is required');
-const db = createDb(process.env.DATABASE_URL!);
+const db = createDb(process.env.DATABASE_URL);
 await db
   .insert(users)
   .values({ email, name: email.split('@')[0]! })
@@ -19,4 +18,4 @@ await db
   .insert(magicLinks)
   .values({ email, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
 await db.$client.end();
-console.log(`${appUrl}/auth/verify?token=${token}`);
+console.log(`${process.env.APP_URL}/auth/verify?token=${token}`);

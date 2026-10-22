@@ -4,7 +4,7 @@ import { APP_NAME, messages } from '@app/shared';
 import { createApp } from './app';
 import { publicPages } from './lib/public-pages';
 
-const db = createDb(process.env.DATABASE_URL!);
+const db = createDb(process.env.DATABASE_URL);
 const app = createApp(db);
 afterAll(() => db.$client.end());
 

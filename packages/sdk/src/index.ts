@@ -52,7 +52,9 @@ let locale: Locale =
   (localStorage.getItem('fieldtest-locale') as Locale | null) ?? (navigator.language.startsWith('de') ? 'de' : 'en');
 let m = messages[locale];
 
-const saved: { invite?: string; token?: string } = JSON.parse(sessionStorage.getItem(STORE) || '{}');
+const saved: { invite?: string | undefined; token?: string | undefined } = JSON.parse(
+  sessionStorage.getItem(STORE) || '{}',
+);
 const invite = new URLSearchParams(location.search).get('fieldtest');
 if (invite) {
   if (invite !== saved.invite) delete saved.token;
@@ -91,7 +93,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   const headers: Record<string, string> = { 'accept-language': locale };
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (saved.token) headers.authorization = `Bearer ${saved.token}`;
-  const res = await fetch(API + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const res = await fetch(API + path, { method, headers, body: body === undefined ? null : JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && saved.token) stop();
   if (!res.ok) throw new Error(data.error || m.failed);

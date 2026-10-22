@@ -2,15 +2,16 @@ import { afterAll, beforeAll, expect, setSystemTime, spyOn, test } from 'bun:tes
 import { createDb, migrateDb, passkeys, sessions, users } from '@app/db';
 import { messages } from '@app/shared';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { createApp } from './app';
 import { generateToken, hashToken } from './middleware/auth';
 import { altchaPayload } from './testing';
 
-const db = createDb(process.env.DATABASE_URL!);
+const db = createDb(process.env.DATABASE_URL);
 const app = createApp(db);
 const log = spyOn(console, 'log');
 
-beforeAll(() => migrateDb(process.env.DATABASE_URL!));
+beforeAll(() => migrateDb(process.env.DATABASE_URL));
 afterAll(() => db.$client.end());
 
 // Most tests sign up fresh addresses, the closed case has its own test
@@ -37,10 +38,16 @@ function send(path: string, body: unknown, headers: Record<string, string> = {})
   });
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: the tests check the shape with expect
-async function body(res: Response | Promise<Response>): Promise<any> {
+async function body(res: Response | Promise<Response>): Promise<unknown> {
   return (await res).json();
 }
+
+// For fields a test reads on, the schema checks they are there
+async function read<T extends z.ZodType>(res: Response | Promise<Response>, schema: T): Promise<z.output<T>> {
+  return schema.parse(await body(res));
+}
+
+const userAnswer = z.object({ user: z.object({ id: z.string(), email: z.string() }), token: z.string().optional() });
 
 // Without SMTP_HOST the login mail lands in the log
 function lastMail() {
@@ -72,11 +79,11 @@ test('magic link logs in, creates the account and logs out', async () => {
 
   const verify = await post('/auth/verify', { token });
   expect(verify.status).toBe(200);
-  expect((await body(verify)).user).toMatchObject({ email, name: email.split('@')[0] });
+  expect(await body(verify)).toMatchObject({ user: { email, name: email.split('@')[0] } });
   const session = verify.headers.get('set-cookie')!.match(/session=([0-9a-f]+)/)![1]!;
 
   const me = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${session}` } });
-  expect((await body(me)).user.email).toBe(email);
+  expect(await body(me)).toMatchObject({ user: { email } });
 
   // Native clients send the same token as a bearer token
   const rename = await app.request('/api/v1/auth/me', {
@@ -84,13 +91,13 @@ test('magic link logs in, creates the account and logs out', async () => {
     headers: { authorization: `Bearer ${session}`, 'content-type': 'application/json' },
     body: JSON.stringify({ name: 'Robin' }),
   });
-  expect((await body(rename)).user.name).toBe('Robin');
+  expect(await body(rename)).toMatchObject({ user: { name: 'Robin' } });
 
   expect((await post('/auth/verify', { token })).status).toBe(400);
 
   await post('/auth/logout', {}, { cookie: `session=${session}` });
   const after = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${session}` } });
-  expect((await body(after)).user).toBeNull();
+  expect(await body(after)).toEqual({ user: null });
 });
 
 test('login mails need an ALTCHA solution that is valid and unused', async () => {
@@ -137,10 +144,10 @@ test('requests without ALTCHA leave the rate limits of an address alone', async 
 
 test('a second login reuses the account', async () => {
   const email = freshEmail();
-  const ids = [];
+  const ids: string[] = [];
   for (let i = 0; i < 2; i++) {
     await post('/auth/magic-link', { email });
-    ids.push((await body(post('/auth/verify', { token: lastMailedToken() }))).user.id);
+    ids.push((await read(post('/auth/verify', { token: lastMailedToken() }), userAnswer)).user.id);
   }
   expect(ids[0]).toBe(ids[1]);
 });
@@ -152,7 +159,7 @@ test('protected routes need a session', async () => {
 
 test('login mails per address are rate limited', async () => {
   const email = freshEmail();
-  const statuses = [];
+  const statuses: number[] = [];
   for (let i = 0; i < 6; i++) statuses.push((await post('/auth/magic-link', { email })).status);
   expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
 });
@@ -168,7 +175,7 @@ test('redeeming links is rate limited per address', async () => {
 test('invalid input answers with an error message', async () => {
   const res = await post('/auth/magic-link', { email: 'no-address' });
   expect(res.status).toBe(400);
-  expect(typeof (await body(res)).error).toBe('string');
+  expect(await body(res)).toEqual({ error: expect.any(String) });
 });
 
 test('apps log in with a code and get a bearer token', async () => {
@@ -180,11 +187,11 @@ test('apps log in with a code and get a bearer token', async () => {
   const verify = await post('/auth/code/verify', { email, code });
   expect(verify.status).toBe(200);
   expect(verify.headers.get('set-cookie')).toBeNull();
-  const { user, token } = await body(verify);
+  const { user, token } = await read(verify, userAnswer);
   expect(user.email).toBe(email);
 
   const me = await app.request('/api/v1/auth/me', { headers: { authorization: `Bearer ${token}` } });
-  expect((await body(me)).user.id).toBe(user.id);
+  expect(await body(me)).toMatchObject({ user: { id: user.id } });
 
   expect((await post('/auth/code/verify', { email, code })).status).toBe(400);
 });
@@ -197,12 +204,12 @@ test('the login mail of the web also carries a code, which logs in with a cookie
 
   const verify = await post('/auth/code/verify', { email, code, cookie: true });
   expect(verify.status).toBe(200);
-  const json = await body(verify);
+  const json = await read(verify, userAnswer);
   expect(json.user.email).toBe(email);
   expect(json.token).toBeUndefined();
   const session = verify.headers.get('set-cookie')!.match(/session=([0-9a-f]+)/)![1]!;
   const me = await app.request('/api/v1/auth/me', { headers: { cookie: `session=${session}` } });
-  expect((await body(me)).user.email).toBe(email);
+  expect(await body(me)).toMatchObject({ user: { email } });
 });
 
 test('a code stops working after five wrong tries', async () => {
@@ -223,22 +230,22 @@ test('closed sign-up mails only existing accounts and the allowlist', async () =
     const stranger = freshEmail();
     const link = await post('/auth/magic-link', { email: stranger });
     expect(link.status).toBe(403);
-    expect((await body(link)).error).toBe(
-      'Die Registrierung ist noch geschlossen. Für diese Adresse gibt es noch kein Konto.',
-    );
+    expect(await body(link)).toEqual({
+      error: 'Die Registrierung ist noch geschlossen. Für diese Adresse gibt es noch kein Konto.',
+    });
     expect((await post('/auth/code', { email: stranger })).status).toBe(403);
     expect(mailCount()).toBe(mails);
 
     expect((await post('/auth/code', { email: existing!.email })).status).toBe(200);
     expect((await post('/auth/magic-link', { email: allowed })).status).toBe(200);
-    expect((await body(post('/auth/verify', { token: lastMailedToken() }))).user.email).toBe(allowed);
+    expect(await body(post('/auth/verify', { token: lastMailedToken() }))).toMatchObject({ user: { email: allowed } });
 
     // login-link still works, Savor's test account needs no allowlist entry
     const run = Bun.spawnSync(['bun', 'src/login-link.ts', stranger], {
       env: { ...process.env, APP_URL: 'https://app.test' },
     });
     const token = new URL(run.stdout.toString().trim()).searchParams.get('token');
-    expect((await body(post('/auth/verify', { token }))).user.email).toBe(stranger);
+    expect(await body(post('/auth/verify', { token }))).toMatchObject({ user: { email: stranger } });
   } finally {
     process.env.SIGNUP_OPEN = 'true';
     delete process.env.SIGNUP_ALLOWLIST;
@@ -267,16 +274,16 @@ test('closed sign-up rechecks links and codes at redemption, while existing acco
           ? post('/auth/verify', { token })
           : post('/auth/code/verify', { email, code }));
         expect(verify.status).toBe(existing ? 200 : 403);
-        const json = await body(verify);
         if (existing) {
-          expect(json.user.email).toBe(email);
+          const { user, token } = await read(verify, userAnswer);
+          expect(user.email).toBe(email);
           const headers: Record<string, string> =
             method === 'link'
               ? { cookie: verify.headers.get('set-cookie')!.split(';')[0]! }
-              : { authorization: `Bearer ${json.token}` };
-          expect((await body(app.request('/api/v1/auth/me', { headers }))).user.id).toBe(json.user.id);
+              : { authorization: `Bearer ${token}` };
+          expect(await body(app.request('/api/v1/auth/me', { headers }))).toMatchObject({ user: { id: user.id } });
         } else {
-          expect(json).toEqual({
+          expect(await body(verify)).toEqual({
             error: 'Die Registrierung ist noch geschlossen. Für diese Adresse gibt es noch kein Konto.',
           });
           expect(verify.headers.get('set-cookie')).toBeNull();
@@ -309,19 +316,19 @@ test('admins invite testers past the closed sign-up, others get 403', async () =
   process.env.ADMIN_EMAILS = `someone@example.com, ${admin.toUpperCase()}`;
   try {
     const me = await app.request('/api/v1/auth/me', { headers: asAdmin });
-    expect((await body(me)).user.admin).toBe(true);
+    expect(await body(me)).toMatchObject({ user: { admin: true } });
 
     const tester = freshEmail();
     expect((await post('/auth/invite', { email: tester })).status).toBe(401);
     const denied = await post('/auth/invite', { email: tester }, asUser);
     expect(denied.status).toBe(403);
-    expect((await body(denied)).error).toBe('Nur für Admins');
+    expect(await body(denied)).toEqual({ error: 'Nur für Admins' });
     expect(await db.select().from(users).where(eq(users.email, tester))).toEqual([]);
 
     expect((await post('/auth/invite', { email: tester }, asAdmin)).status).toBe(200);
     expect(lastMail()).toStartWith(`[mail] To ${tester}:`);
     const verify = await body(post('/auth/verify', { token: lastMailedToken() }));
-    expect(verify.user).toMatchObject({ email: tester, admin: false });
+    expect(verify).toMatchObject({ user: { email: tester, admin: false } });
 
     // From now on the tester logs in like any existing account
     expect((await post('/auth/magic-link', { email: tester })).status).toBe(200);
@@ -341,7 +348,7 @@ test('login-link prints a magic link that logs in', async () => {
   expect(link.origin + link.pathname).toBe('https://app.test/auth/verify');
 
   const verify = await post('/auth/verify', { token: link.searchParams.get('token') });
-  expect((await body(verify)).user.email).toBe(email);
+  expect(await body(verify)).toMatchObject({ user: { email } });
 });
 
 test('a session in use is renewed', async () => {
@@ -368,20 +375,26 @@ test('passkeys belong to logged-in accounts and fail closed', async () => {
   const asOther = await sessionFor(freshEmail());
   expect((await post('/auth/passkeys/register/options', {})).status).toBe(401);
 
+  const rpID = new URL(process.env.APP_URL).hostname;
   const register = await body(post('/auth/passkeys/register/options', {}, asOwner));
-  expect(register.rp.id).toBe(new URL(process.env.APP_URL!).hostname);
-  expect(register.authenticatorSelection.residentKey).toBe('required');
+  expect(register).toMatchObject({ rp: { id: rpID }, authenticatorSelection: { residentKey: 'required' } });
 
   const login = await body(post('/auth/passkeys/login/options', {}));
-  expect(login.rpId).toBe(register.rp.id);
-  expect(login.allowCredentials).toBeUndefined();
+  expect(login).toMatchObject({ rpId: rpID });
+  expect(login).not.toHaveProperty('allowCredentials');
 
-  const response = { id: 'unknown', rawId: 'unknown', type: 'public-key', response: {}, clientExtensionResults: {} };
+  const response = {
+    id: 'unknown',
+    rawId: 'unknown',
+    type: 'public-key',
+    response: { clientDataJSON: 'e30', authenticatorData: 'AA', signature: 'AA' },
+    clientExtensionResults: {},
+  };
   const unknown = await post('/auth/passkeys/login', { response });
   expect(unknown.status).toBe(400);
-  expect((await body(unknown)).error).toBe('Diesen Passkey kennen wir nicht. Melde dich per Mail an.');
+  expect(await body(unknown)).toMatchObject({ error: 'Diesen Passkey kennen wir nicht. Melde dich per Mail an.' });
 
-  const owner = (await body(app.request('/api/v1/auth/me', { headers: asOwner }))).user;
+  const owner = (await read(app.request('/api/v1/auth/me', { headers: asOwner }), userAnswer)).user;
   const id = `test-${crypto.randomUUID()}`;
   await db.insert(passkeys).values({ id, userId: owner.id, publicKey: Buffer.from([1]), counter: 0, backedUp: true });
   const forged = await post('/auth/passkeys/login', { response: { ...response, id, rawId: id } });
@@ -391,7 +404,9 @@ test('passkeys belong to logged-in accounts and fail closed', async () => {
   const del = (headers: Record<string, string>) =>
     app.request(`/api/v1/auth/passkeys/${id}`, { method: 'DELETE', headers });
   expect((await del(asOther)).status).toBe(404);
-  expect((await body(app.request('/api/v1/auth/passkeys', { headers: asOwner }))).passkeys).toHaveLength(1);
+  expect(await body(app.request('/api/v1/auth/passkeys', { headers: asOwner }))).toEqual({
+    passkeys: [expect.any(Object)],
+  });
   expect((await del(asOwner)).status).toBe(200);
-  expect((await body(app.request('/api/v1/auth/passkeys', { headers: asOwner }))).passkeys).toEqual([]);
+  expect(await body(app.request('/api/v1/auth/passkeys', { headers: asOwner }))).toEqual({ passkeys: [] });
 });

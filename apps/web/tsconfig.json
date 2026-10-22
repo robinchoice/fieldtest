@@ -9,6 +9,10 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
     "moduleResolution": "bundler",
     "types": ["bun"]
   }

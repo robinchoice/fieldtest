@@ -1,5 +1,8 @@
+import { z } from 'zod';
 import { page } from '$app/state';
 import { toastError } from './toast.svelte';
+
+const errorAnswer = z.object({ error: z.string(), code: z.string().exactOptional() });
 
 export class ApiError extends Error {
   constructor(
@@ -19,11 +22,12 @@ async function request<T>(method: string, path: string, body?: unknown, silent =
   const res = await fetch(`/api/v1${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? null : JSON.stringify(body),
   });
 
   if (!res.ok) {
-    const { error, code } = await res.json().catch(() => ({ error: res.statusText }));
+    const answer = errorAnswer.safeParse(await res.json().catch(() => null));
+    const { error, code } = answer.data ?? { error: res.statusText };
     if (!silent) toastError(error);
     throw new ApiError(error, code);
   }

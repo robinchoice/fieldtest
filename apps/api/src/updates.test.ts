@@ -5,17 +5,18 @@ import path from 'node:path';
 import { createDb, migrateDb, sessions, updateDeliveries, users } from '@app/db';
 import { APP_NAME } from '@app/shared';
 import { and, eq, ne, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { createApp } from './app';
 import { updateMail } from './lib/mail';
 import { deliverNext, parseDraft, readDrafts, redact } from './lib/updates';
 import { generateToken, hashToken } from './middleware/auth';
 import { altchaPayload } from './testing';
 
-const db = createDb(process.env.DATABASE_URL!);
+const db = createDb(process.env.DATABASE_URL);
 const app = createApp(db);
 const log = spyOn(console, 'log');
 
-beforeAll(() => migrateDb(process.env.DATABASE_URL!));
+beforeAll(() => migrateDb(process.env.DATABASE_URL));
 afterAll(() => {
   delete process.env.ADMIN_EMAILS;
   return db.$client.end();
@@ -42,10 +43,17 @@ function request(method: string, path: string, body?: unknown, headers: Record<s
   });
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: the tests check the shape with expect
-async function body(res: Response | Promise<Response>): Promise<any> {
+async function body(res: Response | Promise<Response>): Promise<unknown> {
   return (await res).json();
 }
+
+// For fields a test reads on, the schema checks they are there
+async function read<T extends z.ZodType>(res: Response | Promise<Response>, schema: T): Promise<z.output<T>> {
+  return schema.parse(await body(res));
+}
+
+const userAnswer = z.object({ user: z.object({ updatesSince: z.string().nullable() }) });
+const updateAnswer = z.object({ update: z.looseObject({ id: z.string() }) });
 
 const lastMailedToken = () =>
   log.mock.calls
@@ -60,7 +68,7 @@ async function logInWithLink(email: string, updates?: boolean, locale = 'de') {
     { email, updates, altcha: await altchaPayload(app) },
     { 'accept-language': locale },
   );
-  return body(request('POST', '/auth/verify', { token: lastMailedToken() }, { 'accept-language': locale }));
+  return read(request('POST', '/auth/verify', { token: lastMailedToken() }, { 'accept-language': locale }), userAnswer);
 }
 
 async function session(email: string) {
@@ -90,8 +98,9 @@ test('the ticked checkbox opts in once the link is opened, the unticked one chan
   const mailed = log.mock.calls.map((args) => String(args[0])).findLast((line) => line.startsWith('[mail]'));
   expect(mailed).toContain(`Logging in with this also turns on email updates from ${APP_NAME}.`);
   expect((await userRow(email).catch(() => null))?.updatesConsentAt ?? null).toBeNull();
-  const { user } = await body(
+  const { user } = await read(
     request('POST', '/auth/verify', { token: lastMailedToken() }, { 'accept-language': 'en' }),
+    userAnswer,
   );
   expect(user.updatesSince).toEqual(expect.any(String));
   expect((await userRow(email)).locale).toBe('en');
@@ -107,9 +116,9 @@ test('the ticked checkbox opts in once the link is opened, the unticked one chan
 test('the settings switch turns update mails on and off', async () => {
   const headers = await session(freshEmail());
   const on = await body(request('PATCH', '/auth/me', { updates: true }, headers));
-  expect(on.user.updatesSince).toEqual(expect.any(String));
+  expect(on).toMatchObject({ user: { updatesSince: expect.any(String) } });
   const off = await body(request('PATCH', '/auth/me', { updates: false }, headers));
-  expect(off.user.updatesSince).toBeNull();
+  expect(off).toMatchObject({ user: { updatesSince: null } });
 });
 
 test('the unsubscribe link works without login, also as one-click POST', async () => {
@@ -177,8 +186,9 @@ test('the admin drafts, previews, tests and sends; the worker delivers to opted-
   await logInWithLink(leaving, true);
   await logInWithLink(bystander);
 
-  const created = await body(
+  const created = await read(
     request('POST', '/updates', { content: { ...content, en: { title: '', features: [] } } }, admin),
+    updateAnswer,
   );
   const id = created.update.id;
   expect(created.update).toMatchObject({ slug: null, sentAt: null, hasImage: false });
@@ -186,7 +196,7 @@ test('the admin drafts, previews, tests and sends; the worker delivers to opted-
   // Incomplete drafts save, but don't send
   expect((await request('POST', `/updates/${id}/send`, undefined, admin)).status).toBe(400);
   const saved = await body(request('PUT', `/updates/${id}`, { content, image: PNG.toString('base64') }, admin));
-  expect(saved.update.hasImage).toBe(true);
+  expect(saved).toMatchObject({ update: { hasImage: true } });
   const image = await app.request(`/api/v1/updates/${id}/image`);
   expect(image.headers.get('content-type')).toBe('image/png');
 
@@ -205,7 +215,7 @@ test('the admin drafts, previews, tests and sends; the worker delivers to opted-
   ]);
 
   const sent = await body(request('POST', `/updates/${id}/send`, undefined, admin));
-  expect(sent.update.sentAt).toEqual(expect.any(String));
+  expect(sent).toMatchObject({ update: { sentAt: expect.any(String) } });
   expect((await request('POST', `/updates/${id}/send`, undefined, admin)).status).toBe(409);
   expect((await request('PUT', `/updates/${id}`, { content }, admin)).status).toBe(409);
   expect((await request('DELETE', `/updates/${id}`, undefined, admin)).status).toBe(409);
@@ -240,16 +250,19 @@ test('the admin drafts, previews, tests and sends; the worker delivers to opted-
     true,
   );
 
-  const list = await body(request('GET', '/updates', undefined, admin));
+  const list = await read(
+    request('GET', '/updates', undefined, admin),
+    z.object({ subscribers: z.number(), updates: z.array(z.looseObject({ id: z.string() })) }),
+  );
   expect(list.subscribers).toBeGreaterThan(0);
-  expect(list.updates.find((update: { id: string }) => update.id === id)).toMatchObject({ pending: 0 });
+  expect(list.updates.find((update) => update.id === id)).toMatchObject({ pending: 0 });
 });
 
 test('failed deliveries wait a minute, then are tried again, and are given up after three attempts', async () => {
   const admin = await session(ADMIN);
   const subscriber = freshEmail();
   await logInWithLink(subscriber, true);
-  const { update } = await body(request('POST', '/updates', { content }, admin));
+  const { update } = await read(request('POST', '/updates', { content }, admin), updateAnswer);
   await body(request('POST', `/updates/${update.id}/send`, undefined, admin));
   // Only this subscriber's delivery, the database keeps the accounts of earlier runs
   const { id: userId } = await userRow(subscriber);

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { type Database, updateDeliveries, updates, users } from '@app/db';
 import { type Locale, type UpdateContent, updateComplete } from '@app/shared';
 import { and, asc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { imageType } from './image';
 import { sendMail, updateMail } from './mail';
 
@@ -77,9 +78,15 @@ const MAX_ATTEMPTS = 3;
 // A failed delivery waits this long, the SMTP server may be over its limit
 const RETRY_MS = 60_000;
 
+const smtpError = z.object({
+  responseCode: z.number().exactOptional(),
+  code: z.string().exactOptional(),
+  message: z.string().exactOptional(),
+});
+
 // SMTP errors may quote the recipient, the log gets neither address nor name
 export function redact(err: unknown) {
-  const { responseCode, code, message } = err as { responseCode?: number; code?: string; message?: string };
+  const { responseCode, code, message } = smtpError.safeParse(err).data ?? {};
   const text = String(message ?? err).replace(/[^\s<>"'@]+@[^\s<>"'@]+/g, '<address>');
   return [responseCode ?? code, text].filter(Boolean).join(' ');
 }

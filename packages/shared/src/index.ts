@@ -50,13 +50,43 @@ export const verifyCodeSchema = z.object({
   cookie: z.boolean().optional(),
 });
 
-// What @simplewebauthn/browser hands over, @simplewebauthn/server checks the rest
-const passkeyResponse = z.looseObject({ id: z.string().min(1).max(1400), type: z.literal('public-key') });
+// WebAuthn's JSON as @simplewebauthn/browser hands it over, @simplewebauthn/server
+// checks the signatures. The server reads no client extensions, so they are dropped.
+const passkeyCredential = {
+  id: z.string().min(1).max(1400),
+  rawId: z.string(),
+  type: z.literal('public-key'),
+  authenticatorAttachment: z.enum(['cross-platform', 'platform']).exactOptional(),
+  clientExtensionResults: z.object({}),
+};
 
-export const passkeyRegisterSchema = z.object({ response: passkeyResponse });
+export const passkeyRegisterSchema = z.object({
+  response: z.object({
+    ...passkeyCredential,
+    response: z.object({
+      clientDataJSON: z.string(),
+      attestationObject: z.string(),
+      authenticatorData: z.string().exactOptional(),
+      transports: z.array(z.string()).exactOptional(),
+      publicKeyAlgorithm: z.number().exactOptional(),
+      publicKey: z.string().exactOptional(),
+    }),
+  }),
+});
 
 // cookie as in verifyCodeSchema
-export const passkeyLoginSchema = z.object({ response: passkeyResponse, cookie: z.boolean().optional() });
+export const passkeyLoginSchema = z.object({
+  response: z.object({
+    ...passkeyCredential,
+    response: z.object({
+      clientDataJSON: z.string(),
+      authenticatorData: z.string(),
+      signature: z.string(),
+      userHandle: z.string().exactOptional(),
+    }),
+  }),
+  cookie: z.boolean().optional(),
+});
 
 export type Passkey = {
   id: string;
@@ -239,9 +269,9 @@ export const mergeFindingSchema = z.object({ into: z.uuid() });
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const runnerPaidSchema = z.object({
-  invoice: z.string().max(4000).optional(),
+  invoice: z.string().max(4000).exactOptional(),
   // Only with ALLOW_FAKE_PAYMENTS, for runners in test mode without an invoice
-  paymentHash: hex64.optional(),
+  paymentHash: hex64.exactOptional(),
   preimage: hex64,
 });
 

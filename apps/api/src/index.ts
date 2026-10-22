@@ -1,9 +1,10 @@
+import './env';
 import './monitoring';
 import { createDb, migrateDb } from '@app/db';
 import { createApp } from './app';
 import { importDrafts } from './lib/updates';
 
-const db = createDb(process.env.DATABASE_URL!);
+const db = createDb(process.env.DATABASE_URL);
 let stopping = false;
 
 // Finish the startup and the requests in flight, then close the database
@@ -21,7 +22,7 @@ process.on('SIGINT', shutdown);
 
 const startup = (async () => {
   // A failed migration aborts the boot.
-  await migrateDb(process.env.DATABASE_URL!);
+  await migrateDb(process.env.DATABASE_URL);
   console.log('[boot] Migrations up to date.');
   await importDrafts(db);
 

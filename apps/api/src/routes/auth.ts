@@ -47,7 +47,7 @@ const linkChecksPerIp = rateLimit('link-checks-per-ip', 60, 15 * MINUTE);
 export async function respondWithSession(
   c: Context<AppEnv>,
   email: string,
-  { updates, cookie = false }: { updates: boolean; cookie?: boolean },
+  { updates, cookie = false }: { updates: boolean; cookie?: boolean | undefined },
 ) {
   const db = c.get('db');
   if (!(await mayLogIn(db, email))) return c.json({ error: t(c).signupClosed }, 403);

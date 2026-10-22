@@ -1,28 +1,26 @@
 import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
 import { claims, createDb, evaluationJobs, feedback, migrateDb, testSessions } from '@app/db';
 import { eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { createApp } from './app';
 import { type Ask, evaluateFeedback, runNextEvaluation } from './lib/evaluate';
 import { checkPayment } from './lib/payments';
 import { altchaPayload } from './testing';
 
-const db = createDb(process.env.DATABASE_URL!);
+const db = createDb(process.env.DATABASE_URL);
 const app = createApp(db);
 const log = spyOn(console, 'log');
 const ip = crypto.randomUUID();
 
-beforeAll(() => migrateDb(process.env.DATABASE_URL!));
+beforeAll(() => migrateDb(process.env.DATABASE_URL));
 afterAll(() => db.$client.end());
-
-// biome-ignore lint/suspicious/noExplicitAny: the tests check the shape with expect
-type Json = any;
 
 async function call(
   method: string,
   path: string,
   body?: unknown,
   headers: Record<string, string> = {},
-): Promise<[number, Json]> {
+): Promise<[number, unknown]> {
   const res = await app.request(`/api/v1${path}`, {
     method,
     headers: { 'content-type': 'application/json', 'x-forwarded-for': ip, ...headers },
@@ -30,6 +28,22 @@ async function call(
   });
   return [res.status, await res.json()];
 }
+
+// For fields a test reads on, the schema checks they are there
+async function read<T extends z.ZodType>(schema: T, ...args: Parameters<typeof call>): Promise<z.output<T>> {
+  const [, body] = await call(...args);
+  return schema.parse(body);
+}
+
+const withId = z.looseObject({ id: z.string() });
+const roundAnswer = z.object({ round: withId.extend({ inviteToken: z.string(), rewards: z.looseObject({}) }) });
+const stateAnswer = z.looseObject({ activeSeconds: z.number(), log: z.array(z.looseObject({ kind: z.string() })) });
+const finding = withId.extend({ number: z.number() });
+const findingsAnswer = z.object({ findings: z.array(finding) });
+const detailAnswer = z.looseObject({ payouts: z.array(withId.extend({ kind: z.string() })) });
+const claimsAnswer = z.object({ claims: z.array(withId) });
+const keyAnswer = z.object({ key: z.string() });
+const shareAnswer = z.object({ shareToken: z.string() });
 
 async function login() {
   const email = `owner-${crypto.randomUUID()}@example.com`;
@@ -63,13 +77,13 @@ async function newRound(owner: { cookie: string }) {
     owner,
   );
   expect(status).toBe(200);
-  return body.round;
+  return roundAnswer.parse(body).round;
 }
 
 async function startSession(invite: string, lightningAddress = tester()) {
   const [status, body] = await call('POST', '/sdk/sessions', { invite, lightningAddress });
   expect(status).toBe(200);
-  return body.token as string;
+  return z.object({ token: z.string() }).parse(body).token;
 }
 
 // The overlay reports one active window per call. Active time can't outrun the clock, so tests age the session.
@@ -87,8 +101,8 @@ test('owners create rounds with an invite link that only they can open', async (
   expect(round.inviteUrl).toBe(`https://pebble.example/app?fieldtest=${round.inviteToken}`);
   expect(round.rewards.cap).toBe(1000);
 
-  const [, list] = await call('GET', '/rounds', undefined, owner);
-  expect(list.rounds.map((r: Json) => r.id)).toContain(round.id);
+  const list = await read(z.object({ rounds: z.array(withId) }), 'GET', '/rounds', undefined, owner);
+  expect(list.rounds.map((r) => r.id)).toContain(round.id);
   const [status] = await call('GET', `/rounds/${round.id}`, undefined, await login());
   expect(status).toBe(404);
 });
@@ -105,9 +119,9 @@ test('invalid rounds and lightning addresses answer in the requested language', 
     },
   );
   expect(status).toBe(400);
-  expect(body.error).toBe('The prototype address has to start with http:// or https://.');
+  expect(body).toEqual({ error: 'The prototype address has to start with http:// or https://.' });
   const [, invalid] = await call('POST', '/sdk/sessions', { invite: 'x', lightningAddress: 'not an address' });
-  expect(invalid.error).toBe('Die Lightning-Adresse sieht aus wie name@domain.com.');
+  expect(invalid).toEqual({ error: 'Die Lightning-Adresse sieht aus wie name@domain.com.' });
 });
 
 test('live rewards: active minutes, first visits and goals, within the cap', async () => {
@@ -118,10 +132,10 @@ test('live rewards: active minutes, first visits and goals, within the cap', asy
 
   const token = await startSession(round.inviteToken);
   await age(token, 10);
-  const report = (body: unknown) => call('POST', '/sdk/session/events', body, bearer(token));
+  const report = (body: unknown) => read(stateAnswer, 'POST', '/sdk/session/events', body, bearer(token));
 
   for (let i = 0; i < 6; i++) await report({ active: 1 });
-  let [, state] = await report({
+  let state = await report({
     events: [
       { kind: 'screen', screen: '/backup', label: 'Backup' },
       { kind: 'screen', screen: '/backup', label: 'Backup' },
@@ -134,10 +148,10 @@ test('live rewards: active minutes, first visits and goals, within the cap', asy
   expect(state.activeSeconds).toBe(60);
   expect(state.liveSats).toBe(130);
   expect(state.goals).toEqual([{ goal: 'Back up your wallet', reached: true }]);
-  expect(state.log.map((e: Json) => e.kind)).toEqual(['minute', 'screen', 'goal', 'friction']);
+  expect(state.log.map((e) => e.kind)).toEqual(['minute', 'screen', 'goal', 'friction']);
 
   await call('PATCH', `/rounds/${round.id}`, { rewards: { ...round.rewards, cap: 150 } }, owner);
-  [, state] = await report({
+  state = await report({
     events: [
       { kind: 'screen', screen: '/home', label: 'Home' },
       { kind: 'screen', screen: '/receive', label: 'Receive' },
@@ -153,10 +167,11 @@ test('live rewards: active minutes, first visits and goals, within the cap', asy
 test('active time cannot run ahead of the clock', async () => {
   const round = await newRound(await login());
   const token = await startSession(round.inviteToken);
-  let state: Json;
-  for (let i = 0; i < 8; i++) [, state] = await call('POST', '/sdk/session/events', { active: 1 }, bearer(token));
-  expect(state.activeSeconds).toBeLessThan(10);
-  expect(state.liveSats).toBe(0);
+  let state: z.output<typeof stateAnswer> | undefined;
+  for (let i = 0; i < 8; i++)
+    state = await read(stateAnswer, 'POST', '/sdk/session/events', { active: 1 }, bearer(token));
+  expect(state?.activeSeconds).toBeLessThan(10);
+  expect(state?.liveSats).toBe(0);
 });
 
 test('accepted findings pay the first reporter by severity and reputation, later ones a confirmation', async () => {
@@ -168,9 +183,9 @@ test('accepted findings pay the first reporter by severity and reputation, later
   await call('POST', '/sdk/session/feedback', { type: 'bug', text: 'Continue does nothing', anchor }, bearer(first));
   await call('POST', '/sdk/session/feedback', { type: 'bug', text: 'Button dead', anchor }, bearer(second));
 
-  let [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
+  let { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
   expect(findings).toHaveLength(2);
-  const [a, b] = findings.sort((x: Json, y: Json) => x.number - y.number);
+  const [a, b] = z.tuple([finding, finding]).parse(findings.sort((x, y) => x.number - y.number));
   expect(await call('POST', `/rounds/${round.id}/findings/${b.id}/merge`, { into: a.id }, owner)).toEqual([
     200,
     { ok: true },
@@ -178,27 +193,27 @@ test('accepted findings pay the first reporter by severity and reputation, later
 
   // Rating accepts the finding. New testers earn half: major 1500 → 750, approved right away.
   const [, rated] = await call('PATCH', `/rounds/${round.id}/findings/${a.id}`, { severity: 'major' }, owner);
-  expect(rated.finding.status).toBe('accepted');
-  let [, detail] = await call('GET', `/rounds/${round.id}/findings/${a.id}`, undefined, owner);
+  expect(rated).toMatchObject({ finding: { status: 'accepted' } });
+  let detail = await read(detailAnswer, 'GET', `/rounds/${round.id}/findings/${a.id}`, undefined, owner);
   expect(detail.reports).toHaveLength(2);
-  expect(detail.payouts.map((p: Json) => [p.kind, p.amount, p.status]).sort()).toEqual([
+  expect(detail.payouts.map((p) => [p.kind, p.amount, p.status]).sort()).toEqual([
     ['confirm', 100, 'approved'],
     ['finding', 750, 'approved'],
   ]);
 
   // Blocker: 4000 → 2000, above the limit of 1500, so it waits for the owner
   await call('PATCH', `/rounds/${round.id}/findings/${a.id}`, { severity: 'blocker' }, owner);
-  [, detail] = await call('GET', `/rounds/${round.id}/findings/${a.id}`, undefined, owner);
-  const blocker = detail.payouts.find((p: Json) => p.kind === 'finding');
+  detail = await read(detailAnswer, 'GET', `/rounds/${round.id}/findings/${a.id}`, undefined, owner);
+  const blocker = detail.payouts.find((p) => p.kind === 'finding')!;
   expect([blocker.amount, blocker.status]).toEqual([2000, 'review']);
 
   expect((await call('POST', `/rounds/${round.id}/claims/${blocker.id}/lower`, undefined, owner))[0]).toBe(200);
   expect((await call('POST', `/rounds/${round.id}/claims/${blocker.id}/approve`, undefined, owner))[0]).toBe(200);
   expect((await call('POST', `/rounds/${round.id}/claims/${blocker.id}/approve`, undefined, owner))[0]).toBe(409);
-  const [, ledger] = await call('GET', `/rounds/${round.id}/claims`, undefined, owner);
-  expect(ledger.claims.find((c: Json) => c.id === blocker.id)).toMatchObject({ amount: 750, status: 'approved' });
+  const ledger = await read(claimsAnswer, 'GET', `/rounds/${round.id}/claims`, undefined, owner);
+  expect(ledger.claims.find((c) => c.id === blocker.id)).toMatchObject({ amount: 750, status: 'approved' });
 
-  [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
+  ({ findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner));
   expect(findings[0]).toMatchObject({ reporters: 2, sessions: 2, severity: 'blocker' });
 });
 
@@ -212,11 +227,11 @@ test('claims in review approve themselves after the waiting time', async () => {
     { type: 'bug', text: 'Crash', anchor: { label: 'x', screen: '/' } },
     bearer(token),
   );
-  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
-  await call('PATCH', `/rounds/${round.id}/findings/${findings[0].id}`, { severity: 'blocker' }, owner);
+  const { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
+  await call('PATCH', `/rounds/${round.id}/findings/${findings[0]!.id}`, { severity: 'blocker' }, owner);
   await db.update(claims).set({ approveAt: sql`now() - interval '1 minute'` }).where(eq(claims.roundId, round.id));
   const [, ledger] = await call('GET', `/rounds/${round.id}/claims`, undefined, owner);
-  expect(ledger.claims[0].status).toBe('approved');
+  expect(ledger).toMatchObject({ claims: [{ status: 'approved' }] });
 });
 
 test('the runner pays approved claims with a proof that matches', async () => {
@@ -225,14 +240,14 @@ test('the runner pays approved claims with a proof that matches', async () => {
   const token = await startSession(round.inviteToken);
   await call('POST', '/sdk/session/events', { events: [{ kind: 'screen', screen: '/a', label: 'A' }] }, bearer(token));
 
-  const [, { key }] = await call('POST', '/runner/key', undefined, owner);
+  const { key } = await read(keyAnswer, 'POST', '/runner/key', undefined, owner);
   const runner = bearer(key);
   expect((await call('GET', '/runner/claims', undefined, bearer('ft_wrong')))[0]).toBe(401);
   await call('POST', '/runner/status', { budgetSats: 50_000, host: 'test', version: '0.1.0' }, runner);
 
-  const [, { claims: open }] = await call('GET', '/runner/claims', undefined, runner);
+  const { claims: open } = await read(claimsAnswer, 'GET', '/runner/claims', undefined, runner);
   expect(open).toMatchObject([{ amountSats: 10, lightningAddress: expect.stringMatching(/@getalby\.com$/) }]);
-  const id = open[0].id;
+  const id = open[0]!.id;
   expect((await call('POST', `/runner/claims/${id}/lock`, undefined, runner))[0]).toBe(200);
   expect((await call('POST', `/runner/claims/${id}/lock`, undefined, runner))[0]).toBe(409);
 
@@ -247,14 +262,14 @@ test('the runner pays approved claims with a proof that matches', async () => {
   ]);
   delete process.env.ALLOW_FAKE_PAYMENTS;
 
-  const [, state] = await call('GET', '/sdk/session', undefined, bearer(token));
+  const state = await read(stateAnswer, 'GET', '/sdk/session', undefined, bearer(token));
   expect(state.paidSats).toBe(10);
   expect(state.log.at(-1)).toMatchObject({ kind: 'paid', sats: 10 });
 
   // Live rewards after the runner took the claim go into a new one
   await call('POST', '/sdk/session/events', { events: [{ kind: 'screen', screen: '/b', label: 'B' }] }, bearer(token));
-  const [, next] = await call('GET', '/runner/claims', undefined, runner);
-  expect(next.claims.map((c: Json) => c.amountSats)).toEqual([10]);
+  const next = await read(claimsAnswer, 'GET', '/runner/claims', undefined, runner);
+  expect(next.claims.map((c) => c.amountSats)).toEqual([10]);
 
   const [, invite] = await call('GET', `/sdk/rounds/${round.inviteToken}`);
   expect(invite).toMatchObject({ runnerOnline: true, budgetSats: 50_000, paid: 1, payouts: 2 });
@@ -305,8 +320,8 @@ test('the evaluation rates grounded reports and merges duplicates', async () => 
   expect(prompts[0]).toContain('<report>Continue is dead');
 
   const second = await report(`Nothing happens on Continue ${crypto.randomUUID()}`);
-  const [, before] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
-  const number = before.findings.find((f: Json) => f.title === 'Continue does nothing').number;
+  const before = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
+  const number = before.findings.find((f) => f.title === 'Continue does nothing')!.number;
   await evaluateFeedback(db, second.id, async () => ({
     duplicateOf: number,
     severity: 'major',
@@ -316,7 +331,7 @@ test('the evaluation rates grounded reports and merges duplicates', async () => 
     fix: 'x',
   }));
 
-  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
+  const { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
   expect(findings).toHaveLength(1);
   expect(findings[0]).toMatchObject({
     title: 'Continue does nothing',
@@ -324,8 +339,8 @@ test('the evaluation rates grounded reports and merges duplicates', async () => 
     status: 'accepted',
     reporters: 2,
   });
-  const [, detail] = await call('GET', `/rounds/${round.id}/findings/${findings[0].id}`, undefined, owner);
-  expect(detail.payouts.map((p: Json) => [p.kind, p.amount]).sort()).toEqual([
+  const detail = await read(detailAnswer, 'GET', `/rounds/${round.id}/findings/${findings[0]!.id}`, undefined, owner);
+  expect(detail.payouts.map((p) => [p.kind, p.amount]).sort()).toEqual([
     ['confirm', 100],
     ['finding', 750],
   ]);
@@ -351,10 +366,10 @@ test('reports the session does not back up wait for the owner', async () => {
     summary: '',
     fix: '',
   }));
-  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
+  const { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
   expect(findings[0]).toMatchObject({ severity: 'blocker', status: 'new' });
   const [, ledger] = await call('GET', `/rounds/${round.id}/claims`, undefined, owner);
-  expect(ledger.claims).toEqual([]);
+  expect(ledger).toEqual({ claims: [] });
 });
 
 test('grounded reports of one tester wait for the owner beyond the limit per tester and round', async () => {
@@ -384,8 +399,8 @@ test('grounded reports of one tester wait for the owner beyond the limit per tes
   // Major 1500 → 750 for a new tester: the first fits the limit of 1000, the second would pass it
   await evaluate();
   await evaluate();
-  const [, ledger] = await call('GET', `/rounds/${round.id}/claims`, undefined, owner);
-  expect(ledger.claims.map((c: Json) => [c.amount, c.status]).sort()).toEqual([
+  const ledger = await read(claimsAnswer, 'GET', `/rounds/${round.id}/claims`, undefined, owner);
+  expect(ledger.claims.map((c) => [c.amount, c.status]).sort()).toEqual([
     [750, 'approved'],
     [750, 'review'],
   ]);
@@ -436,7 +451,7 @@ test('the worker evaluates reports and takes up jobs left behind again', async (
       : null,
   );
   expect(await job(first.id)).toBeUndefined();
-  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
+  const { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
   expect(findings[0]).toMatchObject({ title: 'Draft lost', severity: 'minor', status: 'new' });
 
   // After three attempts the report stays with the owner
@@ -462,13 +477,13 @@ test('shared reports are readable without login and leave out tester names', asy
     { type: 'bug', text: 'Crash on start', anchor: { label: 'x', screen: '/' } },
     bearer(token),
   );
-  const [, { shareToken }] = await call('POST', `/rounds/${round.id}/share`, undefined, owner);
-  expect((await call('POST', `/rounds/${round.id}/share`, undefined, owner))[1].shareToken).toBe(shareToken);
+  const { shareToken } = await read(shareAnswer, 'POST', `/rounds/${round.id}/share`, undefined, owner);
+  expect(await read(shareAnswer, 'POST', `/rounds/${round.id}/share`, undefined, owner)).toEqual({ shareToken });
 
   const [status, report] = await call('GET', `/reports/${shareToken}`);
   expect(status).toBe(200);
   expect(report).toMatchObject({ product: 'Pebble Wallet', sessions: 1, unrated: 1 });
-  expect(report.rest[0].firstReporter).toBeNull();
+  expect(z.object({ rest: z.array(z.unknown()) }).parse(report).rest[0]).toMatchObject({ firstReporter: null });
   expect((await call('GET', '/reports/nope'))[0]).toBe(404);
 });
 
@@ -494,10 +509,10 @@ test('concurrent activity deduplicates rewards and keeps claims within the sessi
     ),
   );
   expect(results.every(([status]) => status === 200)).toBe(true);
-  const [, state] = await call('GET', '/sdk/session', undefined, bearer(token));
+  const state = await read(stateAnswer, 'GET', '/sdk/session', undefined, bearer(token));
   expect(state.liveSats).toBe(150);
-  expect(state.log.filter((event: Json) => event.kind === 'goal')).toHaveLength(1);
-  expect(state.log.filter((event: Json) => event.kind === 'screen' && event.screen === '/shared')).toHaveLength(1);
+  expect(state.log.filter((event) => event.kind === 'goal')).toHaveLength(1);
+  expect(state.log.filter((event) => event.kind === 'screen' && event.screen === '/shared')).toHaveLength(1);
   const payouts = await db.select().from(claims).where(eq(claims.roundId, round.id));
   expect(payouts).toHaveLength(1);
   expect(payouts[0]!.amountSats).toBe(150);
@@ -510,12 +525,12 @@ test('live rewards grow only one claim after a failed payment returns to the que
   const report = (screen: string) =>
     call('POST', '/sdk/session/events', { events: [{ kind: 'screen', screen }] }, bearer(token));
   await report('/a');
-  const [, { key }] = await call('POST', '/runner/key', undefined, owner);
+  const { key } = await read(keyAnswer, 'POST', '/runner/key', undefined, owner);
   const runner = bearer(key);
-  const [, { claims: open }] = await call('GET', '/runner/claims', undefined, runner);
-  expect((await call('POST', `/runner/claims/${open[0].id}/lock`, undefined, runner))[0]).toBe(200);
+  const [claim] = (await read(claimsAnswer, 'GET', '/runner/claims', undefined, runner)).claims;
+  expect((await call('POST', `/runner/claims/${claim!.id}/lock`, undefined, runner))[0]).toBe(200);
   await report('/b');
-  expect((await call('POST', `/runner/claims/${open[0].id}/failed`, { error: 'Invoice unavailable' }, runner))[0]).toBe(
+  expect((await call('POST', `/runner/claims/${claim!.id}/failed`, { error: 'Invoice unavailable' }, runner))[0]).toBe(
     200,
   );
   await report('/c');
@@ -539,8 +554,8 @@ test('concurrent feedback receives distinct finding numbers', async () => {
     ),
   );
   expect(results.every(([status]) => status === 200)).toBe(true);
-  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
-  expect(findings.map((finding: Json) => finding.number).sort()).toEqual([1, 2, 3, 4]);
+  const { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
+  expect(findings.map((finding) => finding.number).sort()).toEqual([1, 2, 3, 4]);
 });
 
 test('concurrent settlements of a finding leave one claim per tester', async () => {
@@ -551,8 +566,8 @@ test('concurrent settlements of a finding leave one claim per tester', async () 
   const anchor = { label: 'Continue', screen: '/backup' };
   await call('POST', '/sdk/session/feedback', { type: 'bug', text: 'Dead button', anchor }, bearer(first));
   await call('POST', '/sdk/session/feedback', { type: 'bug', text: 'Dead button too', anchor }, bearer(second));
-  const [, { findings }] = await call('GET', `/rounds/${round.id}/findings`, undefined, owner);
-  const [a, b] = findings.sort((x: Json, y: Json) => x.number - y.number);
+  const { findings } = await read(findingsAnswer, 'GET', `/rounds/${round.id}/findings`, undefined, owner);
+  const [a, b] = z.tuple([finding, finding]).parse(findings.sort((x, y) => x.number - y.number));
   await call('POST', `/rounds/${round.id}/findings/${b.id}/merge`, { into: a.id }, owner);
 
   // The owner rates while the evaluation settles the same finding: every

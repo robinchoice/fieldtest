@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 // What other people's agents read, through the web server like in production
 test('llms.txt links Markdown for pages that exist', async ({ request }) => {
   const text = await (await request.get('/llms.txt')).text();
-  const links = [...text.matchAll(/\]\((http[^)]+\.md)\)/g)].map((match) => match[1]);
+  const links = [...text.matchAll(/\]\((http[^)]+\.md)\)/g)].flatMap((match) => match[1] ?? []);
   expect(links.length).toBeGreaterThan(0);
   for (const link of links) {
     const markdown = await request.get(link);
