@@ -148,7 +148,7 @@ const MAX_ATTEMPTS = 3;
 // Claims the oldest due job and evaluates it. A failed evaluation is tried again
 // when the lease runs out, after MAX_ATTEMPTS the finding stays with the owner.
 // Returns false when no job is due.
-export async function runNextEvaluation(db: Database, ask: Ask = askClaude, signal?: AbortSignal) {
+export async function runNextEvaluation(db: Database, signal?: AbortSignal, ask: Ask = askClaude) {
   if (signal?.aborted) return false;
   const due = db
     .select({ id: evaluationJobs.feedbackId })
@@ -175,6 +175,7 @@ export async function runNextEvaluation(db: Database, ask: Ask = askClaude, sign
     await done();
   } catch (err) {
     if (signal?.aborted) {
+      // Release only if another worker has not claimed the expired lease.
       await db
         .update(evaluationJobs)
         .set({ runAt: sql`now()`, attempts: job.attempts - 1 })

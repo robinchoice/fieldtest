@@ -12,10 +12,10 @@ import { captureException } from './monitoring';
 // rows in Postgres, so a restart loses nothing and several workers share them.
 const db = createDb(process.env.DATABASE_URL);
 const interval = Number(process.env.UPDATE_MAIL_INTERVAL_MS || 6000);
-// Finish mail transactions and cancel Claude requests, returning their jobs
-// for the next worker without consuming an attempt.
 const stop = new AbortController();
 
+// Finish mail transactions and cancel Claude requests, returning their jobs
+// for the next worker without consuming an attempt.
 process.on('SIGTERM', () => stop.abort());
 process.on('SIGINT', () => stop.abort());
 
@@ -28,7 +28,7 @@ const pause = (ms: number) => sleep(ms, undefined, { signal: stop.signal }).catc
 async function evaluations() {
   while (!stop.signal.aborted) {
     try {
-      if (await runNextEvaluation(db, undefined, stop.signal)) continue;
+      if (await runNextEvaluation(db, stop.signal)) continue;
     } catch (err) {
       console.error('[worker] Claiming a job failed:', err);
       captureException(err);

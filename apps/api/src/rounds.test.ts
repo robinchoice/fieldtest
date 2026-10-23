@@ -424,7 +424,7 @@ test('the worker evaluates reports and takes up jobs left behind again', async (
     (await db.select().from(evaluationJobs).where(eq(evaluationJobs.feedbackId, feedbackId)))[0];
   // Jobs of other tests are dropped unchanged
   const work = async (ask: Ask, signal?: AbortSignal) => {
-    while (!signal?.aborted && (await runNextEvaluation(db, ask, signal)));
+    while (await runNextEvaluation(db, signal, ask));
   };
 
   const text = `Save loses the draft ${crypto.randomUUID()}`;
@@ -439,7 +439,7 @@ test('the worker evaluates reports and takes up jobs left behind again', async (
   const claimed = await job(first.id);
   expect(claimed!.attempts).toBe(1);
   expect(claimed!.runAt.getTime()).toBeGreaterThan(Date.now());
-  expect(await runNextEvaluation(db, async () => null)).toBe(false);
+  expect(await runNextEvaluation(db, undefined, async () => null)).toBe(false);
 
   await db
     .update(evaluationJobs)

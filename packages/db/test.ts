@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { constants } from 'node:os';
 import { parseEnv } from 'node:util';
 import postgres from 'postgres';
 
@@ -14,12 +15,12 @@ target.pathname = `/${name}`;
 
 let child: Bun.Subprocess | undefined;
 let signal: 'SIGINT' | 'SIGTERM' | undefined;
-function forward(sig: 'SIGINT' | 'SIGTERM') {
-  signal = sig;
-  child?.kill(sig);
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => {
+    signal = sig;
+    child?.kill(sig);
+  });
 }
-process.on('SIGINT', () => forward('SIGINT'));
-process.on('SIGTERM', () => forward('SIGTERM'));
 
 let exitCode = 0;
 try {
@@ -41,4 +42,4 @@ try {
 } finally {
   await sql.end();
 }
-process.exit(signal ? (signal === 'SIGINT' ? 130 : 143) : exitCode);
+process.exit(signal ? 128 + constants.signals[signal] : exitCode);
