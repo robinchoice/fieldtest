@@ -10,6 +10,6 @@
   "dependencies": {
     "@getalby/sdk": "^8.0.3",
     "light-bolt11-decoder": "^3.2.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   }
 }

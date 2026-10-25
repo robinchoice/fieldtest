@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  // The tests import the API, its env types come along
+  "include": ["src", "build.ts", "../api/src/env.ts"]
+}

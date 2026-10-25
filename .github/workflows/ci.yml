@@ -52,6 +52,9 @@ jobs:
       - run: bun run check
       # Builds the web app and tests the build
       - run: bun run test
+      # The CLI as one file with the live URL baked in, built to check it compiles (README, „CLI“)
+      - run: bun run build
+        working-directory: apps/cli
 
   # Images are built here, not on VPS 1: building there ran it out of memory.
   # One job for both images: every job is billed in whole minutes.

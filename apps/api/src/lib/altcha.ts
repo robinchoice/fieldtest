@@ -1,4 +1,5 @@
 import { type Database, serverSecrets } from '@app/db';
+import { altchaChallengeSchema } from '@app/shared';
 import { createChallenge, randomInt, verifySolution } from 'altcha-lib';
 import { deriveKey } from 'altcha-lib/algorithms/pbkdf2';
 import { eq } from 'drizzle-orm';
@@ -20,22 +21,8 @@ const LIFETIME = 10 * 60 * 1000;
 // Each payload counts once. The window outlasts the challenge, after that it has expired.
 const usedPayloads = rateLimit('altcha-used', 1, LIFETIME);
 
-// The challenge as the API hands it out. Loose, so fields the signature
-// covers stay in place; verifySolution checks them.
-export const challengeSchema = z.looseObject({
-  parameters: z.looseObject({
-    algorithm: z.string(),
-    nonce: z.string(),
-    salt: z.string(),
-    cost: z.number(),
-    keyLength: z.number(),
-    keyPrefix: z.string(),
-  }),
-  signature: z.string().exactOptional(),
-});
-
 const payloadSchema = z.object({
-  challenge: challengeSchema,
+  challenge: altchaChallengeSchema,
   solution: z.object({ counter: z.number(), derivedKey: z.string(), time: z.number().exactOptional() }),
 });
 

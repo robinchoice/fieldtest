@@ -20,7 +20,7 @@
     "hono": "^4.13.12",
     "light-bolt11-decoder": "^3.2.0",
     "nodemailer": "^10.0.13",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/nodemailer": "^8.0.2"

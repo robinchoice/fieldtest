@@ -7,6 +7,9 @@ export * from './messages';
 // The one place to rename a new project. API mails and web titles read it.
 export const APP_NAME = 'Fieldtest';
 
+// Bundle ID, its last part names the CLI (README, „CLI“)
+export const APP_ID = 'org.pleasance.fieldtest';
+
 // Section of the family colour band for this product, see DESIGN.md.
 export const APP_BAND: Band = { from: 3.2, to: 3.85 };
 
@@ -34,6 +37,22 @@ export const magicLinkSchema = z.object({
 
 export const verifySchema = z.object({
   token: z.string().min(1).max(200),
+  // The web logs in with a cookie, the CLI sends false and takes the token
+  cookie: z.boolean().optional(),
+});
+
+// An ALTCHA challenge as the API hands it out, for the solvers in tests and CLI.
+// Loose, so fields the signature covers stay in place; verifySolution checks them.
+export const altchaChallengeSchema = z.looseObject({
+  parameters: z.looseObject({
+    algorithm: z.string(),
+    nonce: z.string(),
+    salt: z.string(),
+    cost: z.number(),
+    keyLength: z.number(),
+    keyPrefix: z.string(),
+  }),
+  signature: z.string().exactOptional(),
 });
 
 export const loginCodeSchema = z.object({ email, updates: z.boolean().default(false) });
@@ -46,7 +65,7 @@ export const verifyCodeSchema = z.object({
     .string()
     .trim()
     .regex(/^\d{6}$/, 'codeDigits'),
-  // The web logs in with a cookie, the app takes the token from the answer
+  // The web logs in with a cookie, app and CLI take the token from the answer
   cookie: z.boolean().optional(),
 });
 

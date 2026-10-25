@@ -7,7 +7,7 @@
 
 ## Checks
 
-`bun run check && bun run test` (`test` baut das Web und testet den Build). Die Browser-Tests starten API und Web auf eigenen Ports (31100, 31101), unter dem ephemeren Linux-Portbereich (32768–60999), damit ausgehende Verbindungen sie nicht kurzzeitig belegen. Testet ein anderer Worktree gleichzeitig, mit anderen Ports unter 32768 aufrufen: `TEST_API_PORT=31102 TEST_WEB_PORT=31103 bun run test`.
+`bun run check && bun run test` (`test` baut das Web und testet den Build, dazu die CLI gegen die API), bei CLI-Änderungen zusätzlich `bun run build` (baut auch die CLI-Datei). Die Browser-Tests starten API und Web auf eigenen Ports (31100, 31101), unter dem ephemeren Linux-Portbereich (32768–60999), damit ausgehende Verbindungen sie nicht kurzzeitig belegen. Testet ein anderer Worktree gleichzeitig, mit anderen Ports unter 32768 aufrufen: `TEST_API_PORT=31102 TEST_WEB_PORT=31103 bun run test`.
 
 ## Deploy
 
@@ -31,7 +31,8 @@ Stack und Aufbau: siehe README.md. Gestaltung: siehe DESIGN.md.
 - Korrelierte Subselects in `sql`-Templates: Bei einem `select` aus nur einer Tabelle rendert Drizzle Spalten ohne Tabellennamen, auch im Template. `exists (select 1 from ${subs} where ${subs.userId} = ${users.id})` wird zu `where "user_id" = "id"`, `"id"` meint dann die Spalte des Subselects, das Ergebnis ist ohne Fehler falsch. Solche Subselects nur in Abfragen mit Join oder mit `alias()`, sonst zwei einfache Abfragen.
 - Neue Route: Datei in `apps/api/src/routes`, in `app.ts` einhängen. `requireAuth` für eingeloggte Nutzer (danach `c.get('user')`), `validJson(schema)` mit dem Schema aus `packages/shared`.
 - Fehler antworten immer als `{ error: string }` in der Sprache aus `Accept-Language`: `t(c).<key>` aus `lib/i18n.ts`, eigene zod-Meldungen sind Keys aus `messages.ts`. Das Web zeigt ihn als Toast.
-- Jeder neue Text kommt auf Deutsch und Englisch in `packages/shared/src/messages.ts`, im Web über `t()` aus `$lib/i18n`. Das Tester-Overlay hat eigene Texte in `packages/sdk/src/messages.ts`.
+- Jeder neue Text kommt auf Deutsch und Englisch in `packages/shared/src/messages.ts` (für Web, API und CLI), im Web über `t()` aus `$lib/i18n`. Das Tester-Overlay hat eigene Texte in `packages/sdk/src/messages.ts`.
+- CLI (README, „CLI“): Jedes Kern-Feature bekommt im selben Zug einen Befehl in `apps/cli/src/commands` nach dem Beispiel `rounds.ts`, mit Text und `--json` und einem Test in `cli.test.ts`. Die CLI spricht nur mit der HTTP-API, nie mit der Datenbank, so gelten Rechte, Rate-Limits und die Registrierungssperre. Agenten melden sie nur mit admin@pleasance.org an (`login-link fieldtest | fieldtest login --link -`), nie mit Kundenkonten.
 - Alles, was Mails verschickt oder Geheimnisse prüft, bekommt ein `rateLimit` aus `lib/rate-limit.ts`. Die Zähler liegen in Postgres und gelten für alle API-Instanzen.
 - Öffentliche Formulare ohne Login, die Mails verschicken oder Daten anlegen, prüfen ALTCHA (README, „ALTCHA“): `requireAltcha` vor `validJson`, im Web `Altcha.svelte` im Formular. Nicht für Links aus Mails wie Abmelden oder Login-Link und nicht für Wege mit Einladungstoken wie das Overlay der Testpersonen, die tragen schon ein Geheimnis.
 - Mails über `sendMail` aus `lib/mail.ts`, im Design der Vorlage dort (DESIGN.md, „Mails“).
