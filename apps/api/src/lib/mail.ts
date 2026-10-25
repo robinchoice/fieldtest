@@ -38,14 +38,22 @@ const transport = process.env.SMTP_HOST
 
 const from = process.env.EMAIL_FROM || `${APP_NAME} <noreply@localhost>`;
 
-type Mail = { to: string; subject: string; text: string; html: string; headers?: Record<string, string> };
+type Mail = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  replyTo?: { name: string; address: string };
+  attachments?: { filename: string; content: Buffer }[];
+  headers?: Record<string, string>;
+};
 
-export async function sendMail({ to, subject, text, html, headers }: Mail) {
+export async function sendMail({ to, subject, text, html, replyTo, attachments, headers }: Mail) {
   if (!transport) {
     console.log(`[mail] To ${to}: ${subject}\n${text}`);
     return;
   }
-  await transport.sendMail({ from, to, subject, text, html, headers });
+  await transport.sendMail({ from, to, subject, text, html, replyTo, attachments, headers });
 }
 
 // The branded template, DESIGN.md „Mails“. Tables and inline styles, because

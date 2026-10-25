@@ -16,9 +16,10 @@ COPY apps/api apps/api
 # Drafts of update mails, imported on start
 COPY updates updates
 
-# Set by CI: /api/health reports the commit
+# Set by CI: /api/health and feedback report the commit, feedback files issues in this repo
 ARG APP_VERSION=dev
-ENV NODE_ENV=production APP_VERSION=$APP_VERSION
+ARG GITHUB_REPOSITORY=
+ENV NODE_ENV=production APP_VERSION=$APP_VERSION GITHUB_REPOSITORY=$GITHUB_REPOSITORY
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
   CMD bun -e "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"

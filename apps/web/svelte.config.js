@@ -12,7 +12,9 @@ export default {
       directives: {
         'default-src': ['self'],
         'script-src': ['self'],
-        'style-src': ['self'],
+        // The hash is that of an empty <style>: the feedback screenshot reads
+        // web fonts through one. Content of any kind stays blocked.
+        'style-src': ['self', 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='],
         // Style attributes in app.html and in SvelteKit's route announcer
         'style-src-attr': ['unsafe-inline'],
         'img-src': ['self', 'data:'],

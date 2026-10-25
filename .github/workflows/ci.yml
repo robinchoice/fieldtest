@@ -83,9 +83,10 @@ jobs:
           push: true
           platforms: linux/arm64
           provenance: false
-          # /api/health reports the commit
+          # /api/health and feedback report the commit, feedback files issues in this repo
           build-args: |
             APP_VERSION=${{ github.sha }}
+            GITHUB_REPOSITORY=${{ github.repository }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

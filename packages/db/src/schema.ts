@@ -1,4 +1,4 @@
-import type { Rewards, UpdateContent } from '@app/shared';
+import type { FeedbackContext, Rewards, UpdateContent } from '@app/shared';
 import {
   bigint,
   boolean,
@@ -213,6 +213,21 @@ export const feedback = pgTable(
   },
   (t) => [index('feedback_finding_idx').on(t.findingId)],
 );
+
+// Bug reports and ideas about Fieldtest itself from its feedback button, also
+// mailed and filed as GitHub issues (README „Feedback“). Not to be confused
+// with feedback, the testers' reports in a round. The random id is the key of
+// the screenshot URL.
+export const appFeedback = pgTable('app_feedback', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  kind: varchar('kind', { length: 10 }).notNull(),
+  message: text('message').notNull(),
+  screenshot: bytea('screenshot'),
+  context: jsonb('context').$type<FeedbackContext & { api: string }>().notNull(),
+  issueUrl: varchar('issue_url', { length: 300 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 // What a tester gets paid. Fieldtest only keeps the books, the owner's runner pays.
 export const claims = pgTable(

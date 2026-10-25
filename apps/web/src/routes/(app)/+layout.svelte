@@ -5,6 +5,8 @@
   import { page } from '$app/state';
   import { auth, checkAuth, logout } from '$lib/auth.svelte';
   import Button from '$lib/components/Button.svelte';
+  import Feedback from '$lib/components/Feedback.svelte';
+  import { openFeedback } from '$lib/feedback.svelte';
   import { t } from '$lib/i18n';
 
   let { children } = $props();
@@ -35,11 +37,13 @@
       <Button variant="secondary" href="/invite">{t().inviteTester}</Button>
     {/if}
     <Button variant="secondary" href="/settings">{t().settings}</Button>
+    <Button variant="secondary" onclick={() => openFeedback('idea')}>{t().giveFeedback}</Button>
     <Button variant="secondary" onclick={handleLogout}>{t().logOut}</Button>
   </header>
   <main>
     {@render children()}
   </main>
+  <Feedback />
 {/if}
 
 <style>

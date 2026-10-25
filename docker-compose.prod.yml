@@ -28,6 +28,8 @@ services:
       - SIGNUP_ALLOWLIST=${SIGNUP_ALLOWLIST:-}
       - SIGNUP_OPEN=${SIGNUP_OPEN:-}
       - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - FEEDBACK_EMAIL=${FEEDBACK_EMAIL:-}
+      - FEEDBACK_GITHUB_TOKEN=${FEEDBACK_GITHUB_TOKEN:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
     depends_on:
       postgres:

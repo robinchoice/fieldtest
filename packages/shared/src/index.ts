@@ -13,6 +13,10 @@ export const APP_ID = 'org.pleasance.fieldtest';
 // Section of the family colour band for this product, see DESIGN.md.
 export const APP_BAND: Band = { from: 3.2, to: 3.85 };
 
+// True once the project is live as 1.0 (README, "Live als 1.0"). From then on
+// the bug button waits for the test mode switch, see testMode in the web's feedback.svelte.ts.
+export const LIVE = false;
+
 export type User = {
   id: string;
   email: string;
@@ -154,6 +158,27 @@ export type UpdateSummary = {
   failed: number;
   pending: number;
 };
+
+// What the web sends along with feedback on Fieldtest itself. The API adds its own version.
+export const feedbackContextSchema = z.object({
+  platform: z.enum(['web']),
+  page: z.string().max(500),
+  device: z.string().max(300),
+  viewport: z.string().max(50),
+  locale: z.string().max(10),
+  // Failed API calls as "METHOD /path → status", newest first
+  errors: z.array(z.string().max(300)).max(5),
+});
+
+export type FeedbackContext = z.infer<typeof feedbackContextSchema>;
+
+export const feedbackSchema = z.object({
+  kind: z.enum(['bug', 'idea']),
+  message: z.string().trim().min(5, 'feedbackTooShort').max(5000),
+  // PNG or JPEG, up to about 5 MB
+  screenshot: z.base64().max(7_000_000).optional(),
+  context: feedbackContextSchema,
+});
 
 // A path on this site to return to after login. Anything that would resolve to
 // another origin (//host, /\host, or tabs and newlines that browsers strip) is

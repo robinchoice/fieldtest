@@ -1,6 +1,8 @@
 <script lang="ts">
   import { APP_BAND } from '@app/shared';
   import { page } from '$app/state';
+  import { auth } from '$lib/auth.svelte';
+  import { setTestMode, testMode } from '$lib/feedback.svelte';
   import { setLocale, t } from '$lib/i18n';
 
   const other = $derived(page.data.locale === 'de' ? 'en' : 'de');
@@ -13,6 +15,12 @@
       style:left="{((APP_BAND.from - 1) / 6) * 100}%"
       style:width="{((APP_BAND.to - APP_BAND.from) / 6) * 100}%"
     ></span></span>
+  {#if auth.user}
+    <label title={t().testModeHint}>
+      <input type="checkbox" checked={testMode.on} onchange={(e) => setTestMode(e.currentTarget.checked)} />
+      {t().testMode}
+    </label>
+  {/if}
   <button type="button" lang={other} onclick={() => setLocale(other)}>{t().otherLanguage}</button>
 </footer>
 
@@ -45,6 +53,16 @@
     margin-left: auto;
     border-radius: 2px;
     background: linear-gradient(rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.6)), var(--spectrum);
+  }
+  label {
+    display: inline-flex;
+    gap: 0.375rem;
+    align-items: center;
+    cursor: pointer;
+  }
+  input {
+    margin: 0;
+    accent-color: var(--accent);
   }
   button {
     padding: 0.25rem 0;

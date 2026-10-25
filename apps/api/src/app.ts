@@ -8,6 +8,7 @@ import { captureException } from './monitoring';
 import { agentRoutes } from './routes/agents';
 import { altchaRoutes } from './routes/altcha';
 import { authRoutes } from './routes/auth';
+import { feedbackRoutes } from './routes/feedback';
 import { passkeyRoutes } from './routes/passkeys';
 import { reportRoutes } from './routes/reports';
 import { roundRoutes } from './routes/rounds';
@@ -43,6 +44,7 @@ export function createApp(db: Database) {
       .route('/altcha', altchaRoutes)
       .route('/auth', authRoutes)
       .route('/auth/passkeys', passkeyRoutes)
+      .route('/feedback', feedbackRoutes)
       .route('/reports', reportRoutes)
       .route('/rounds', roundRoutes)
       .route('/runner', runnerRoutes)

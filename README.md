@@ -65,6 +65,20 @@ Optional: `MAX_PER_CLAIM` (Standard 10.000 Sats), `MAX_PER_TESTER_DAY` (50.000),
 
 Der Runner ruft nur öffentliche Hostnamen auf, damit eine präparierte Lightning-Adresse ihn nicht ins Netz des Owners lenken kann.
 
+## Feedback
+
+Der Feedback-Knopf aus dem Starter, für Rückmeldungen zu Fieldtest selbst, nicht zu verwechseln mit dem Feedback der Testpersonen im Overlay einer Runde. Eingeloggte Nutzer sehen unter `routes/(app)` einen verschiebbaren Käfer-Knopf. Ein Klick macht einen Screenshot, die Stelle lässt sich markieren. Ideen ohne Screenshot gehen über „Feedback geben“ im Kopf.
+
+Den Käfer schaltet der Testmodus in der Fußzeile, gespeichert pro Gerät. Bis 1.0 ist er an, ab 1.0 (`LIVE` in `packages/shared`) aus, bis jemand ihn einschaltet. „Feedback geben“ bleibt für alle.
+
+Mitgeschickt werden Seite, Version, Gerät, Fenstergröße, Sprache und die letzten fünf fehlgeschlagenen API-Aufrufe, sichtbar im Formular unter „Was mitgeschickt wird“.
+
+Die API speichert jede Meldung in `app_feedback` (die Tabelle `feedback` gehört den Runden) und legt dann ein Issue in `robinchoice/fieldtest` an, mit den Labels `feedback`, `bug` oder `idea` und `web`, ohne Mail-Adresse. Danach geht eine Mail an `FEEDBACK_EMAIL` mit Screenshot im Anhang und Link aufs Issue. Wer antwortet, schreibt dem Nutzer. Fällt GitHub oder die Mail aus, bleibt die Meldung gespeichert.
+
+- Offene Meldungen: `gh issue list --label feedback`
+- Screenshots stehen nicht im öffentlichen Issue. `/api/v1/feedback/<id>/screenshot` liefert sie nur an Admins aus `ADMIN_EMAILS`.
+- Die CI backt das Repo als `GITHUB_REPOSITORY` ins API-Image. Ohne `FEEDBACK_GITHUB_TOKEN` (fein granuliert, nur „Issues: Read and write“, in `~/.secrets` als `GITHUB_FEEDBACK_TOKEN`) entsteht kein Issue, ohne `FEEDBACK_EMAIL` keine Mail.
+
 ## Update-Mails
 
 Nutzer mit Konto (Owner, nicht die Testpersonen einer Runde) bekommen neue Funktionen per Mail, wenn sie es wollen. Gespeichert wird alles in der Datenbank der App, verschickt über das SMTP aus `lib/mail.ts`.
@@ -89,7 +103,7 @@ Fremde Agenten lesen die öffentlichen Inhalte ohne HTML, nach [llms.txt](https:
 
 ## Deploy auf Coolify
 
-Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional und geht nur an den Service `worker`. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
+Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional und geht nur an den Service `worker`, `FEEDBACK_EMAIL` und `FEEDBACK_GITHUB_TOKEN` (siehe „Feedback“) nur an `api`. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
 
 ### Screenshots
 

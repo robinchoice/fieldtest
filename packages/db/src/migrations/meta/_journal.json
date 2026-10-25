@@ -71,6 +71,13 @@
       "when": 1792669736876,
       "tag": "0009_wandering_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792964798235,
+      "tag": "0010_app_feedback",
+      "breakpoints": true
     }
   ]
 }
