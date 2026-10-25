@@ -12,6 +12,7 @@
 ## Deploy
 
 - Ein Push auf `main` baut nach grüner CI die Images und deployt sie über die Coolify-API (Secrets `COOLIFY_TOKEN` mit dem Token `ci-fieldtest` und `COOLIFY_UUID`). Ohne `COOLIFY_TOKEN` überspringt die CI den Deploy.
+- Danach fotografiert die CI die öffentlichen Seiten (`PAGES` in `apps/web/screenshots.ts`) nach `docs/screenshots/`, committet geänderte Bilder mit `[skip ci]` auf `main` und meldet den Deploy an `robinchoice/pleasance` (README, „Screenshots“). Vor dem Push also holen. Ohne `PLEASANCE_DISPATCH_TOKEN` entfällt nur die Meldung.
 - Prüfen: `gh run watch`. Mit Deploy ist der Job erst grün, wenn `https://fieldtest.pleasance.org/api/health` (bzw. die Repo-Variable `API_URL`) den Commit als `revision` meldet.
 
 ## Fallen

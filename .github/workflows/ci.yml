@@ -116,6 +116,8 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      deployed: ${{ steps.deploy.outputs.deployed }}
     env:
       COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
       COOLIFY_UUID: ${{ secrets.COOLIFY_UUID }}
@@ -124,6 +126,7 @@ jobs:
       APP_URL: ${{ vars.API_URL || format('https://{0}.pleasance.org', github.event.repository.name) }}
     steps:
       - name: Deploy images to Coolify
+        id: deploy
         run: |
           set -euo pipefail
           if [ -z "$COOLIFY_TOKEN" ]; then
@@ -177,9 +180,75 @@ jobs:
             revision=$(curl --silent --max-time 10 "$APP_URL/api/health" | jq -r '.revision // empty' 2>/dev/null || true)
             echo "Public revision: ${revision:-none}"
             if [ "$revision" = "$GITHUB_SHA" ]; then
+              echo deployed=true >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 10
           done
           echo "$APP_URL/api/health does not serve $GITHUB_SHA" >&2
           exit 1
+
+  # Photographs the live site (apps/web/screenshots.ts) and commits docs/screenshots
+  # to main when the pictures changed. [skip ci] keeps that commit from deploying again.
+  screenshots:
+    needs: deploy
+    if: needs.deploy.outputs.deployed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      APP_URL: ${{ vars.API_URL || format('https://{0}.pleasance.org', github.event.repository.name) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - id: playwright
+        run: |
+          echo "version=$(grep -oP '"playwright": \["playwright@\K[^"]+' bun.lock)" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browsers.outputs.cache-hit != 'true'
+        run: bunx playwright install --with-deps chromium
+        working-directory: apps/web
+      - if: steps.browsers.outputs.cache-hit == 'true'
+        run: bunx playwright install-deps chromium
+        working-directory: apps/web
+      - run: bun run screenshots "$APP_URL"
+        working-directory: apps/web
+      - name: Commit the screenshots to main
+        run: |
+          set -euo pipefail
+          mv docs/screenshots "$RUNNER_TEMP/screenshots"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # main may have moved on since this commit, a rejected push starts over from the new main
+          for _ in 1 2 3; do
+            git fetch --depth 1 origin main
+            git checkout -f -B main FETCH_HEAD
+            rm -rf docs/screenshots
+            cp -r "$RUNNER_TEMP/screenshots" docs/screenshots
+            git add -- docs/screenshots
+            git diff --cached --quiet && exit 0
+            git commit -m "docs: retake the screenshots for ${GITHUB_SHA::7} [skip ci]"
+            git push origin main && exit 0
+          done
+          exit 1
+      # Tells pleasance.org that the prototype is live with fresh screenshots.
+      # A step, not its own job: every job is billed in whole minutes.
+      - name: Send prototype-deployed to robinchoice/pleasance
+        env:
+          GH_TOKEN: ${{ secrets.PLEASANCE_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No PLEASANCE_DISPATCH_TOKEN secret yet, skipping"
+            exit 0
+          fi
+          gh api repos/robinchoice/pleasance/dispatches \
+            -f event_type=prototype-deployed \
+            -f "client_payload[slug]=${GITHUB_REPOSITORY#*/}" \
+            -f "client_payload[sha]=$GITHUB_SHA"

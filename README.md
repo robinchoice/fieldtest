@@ -91,6 +91,10 @@ Fremde Agenten lesen die öffentlichen Inhalte ohne HTML, nach [llms.txt](https:
 
 Wie im Starter: Ressource aus dem Repo, Build Pack „Docker Compose“ mit `docker-compose.prod.yml`, Domain nur beim Service `web`, Variablen aus `.env.production.example`. `ANTHROPIC_API_KEY` ist optional und geht nur an den Service `worker`. Die CI baut die Images bei grünem Push auf `main`, für den Deploy braucht sie die Secrets `COOLIFY_TOKEN` und `COOLIFY_UUID`. Der Deploy gilt erst als fertig, wenn `/api/health` unter der öffentlichen URL den neuen Commit als `revision` meldet. Die URL ist `https://fieldtest.pleasance.org`, eine eigene Domain kommt als Repo-Variable `API_URL`.
 
+### Screenshots
+
+Wie im Starter (dort README, „Screenshots“): Nach jedem erfolgreichen Deploy fotografiert der CI-Job `screenshots` die öffentlichen Seiten aus `PAGES` in `apps/web/screenshots.ts` als Desktop und Handy nach `docs/screenshots/<seite>-<gerät>-<sprache>.webp`, committet geänderte Bilder mit `[skip ci]` auf `main` und schickt `prototype-deployed` per `repository_dispatch` an `robinchoice/pleasance` (Secret `PLEASANCE_DISPATCH_TOKEN`, ohne das entfällt nur die Meldung). Nur Seiten ohne Login, die Bilder zeigen nie Nutzerdaten. Lokal: `bun run screenshots [url]` in `apps/web`.
+
 ### Stoppen und weitere Instanzen
 
 API und Worker behandeln `SIGTERM` und `SIGINT`: Die API nimmt keine neuen Verbindungen an und wartet auf laufende Antworten, der Worker holt keine weiteren Aufträge und beendet die laufende Zustellung samt Transaktion. Laufende Claude-Aufrufe bricht er ab und gibt deren Auftrag sofort wieder frei, ohne einen Versuch zu zählen. Danach schließen sie den Postgres-Pool. Auch während des API-Starts wartet der Shutdown auf Migration und Import. Compose lässt dafür 30 Sekunden Zeit (`stop_grace_period`), erst danach erzwingt Docker den Abbruch. SMTP hat dafür begrenzte DNS-, Verbindungs- und Begrüßungswartezeiten (je 5 s) sowie 10 s für einen inaktiven Socket. Das ist keine Obergrenze für die gesamte Zustellung; ein langsamer, weiter antwortender Server oder eine lange Datenbankabfrage kann das Shutdown-Budget weiterhin überschreiten.
