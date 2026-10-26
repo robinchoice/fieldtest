@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { type Command, type Context, EXIT, Failure, str } from '../command';
 import { removeSession, saveSession } from '../config';
 
-export const userSchema = z.object({
+const userSchema = z.object({
   id: z.string(),
   email: z.string(),
   name: z.string(),

@@ -35,7 +35,6 @@ export function createClient(url: string, token: string | undefined, locale: Loc
   return {
     get: <T extends z.ZodType>(path: string, schema: T) => request('GET', path, schema),
     post: <T extends z.ZodType>(path: string, schema: T, body: object = {}) => request('POST', path, schema, body),
-    patch: <T extends z.ZodType>(path: string, schema: T, body: object) => request('PATCH', path, schema, body),
   };
 }
 

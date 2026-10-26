@@ -55,9 +55,7 @@ function issue(report: Report) {
       `| | |\n|---|---|\n${details(report)
         .map(([key, value]) => `| ${key} | \`${cell(value!)}\` |`)
         .join('\n')}`,
-    ]
-      .filter(Boolean)
-      .join('\n\n'),
+    ].join('\n\n'),
     labels: ['feedback', report.kind, report.context.platform],
   };
 }
@@ -74,10 +72,8 @@ function mail(report: Report, to: string, issueUrl: string | null, screenshot: B
       '--',
       `${report.user.name} <${report.user.email}>`,
       ...details(report).map(([key, value]) => `${key}: ${value}`),
-      issueUrl && `Issue: ${issueUrl}`,
-    ]
-      .filter((line) => line !== null)
-      .join('\n'),
+      ...(issueUrl ? [`Issue: ${issueUrl}`] : []),
+    ].join('\n'),
     attachments: screenshot
       ? [{ filename: `screenshot.${type === 'image/png' ? 'png' : 'jpg'}`, content: screenshot }]
       : [],
