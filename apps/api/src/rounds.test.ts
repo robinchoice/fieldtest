@@ -272,7 +272,7 @@ test('the runner pays approved claims with a proof that matches', async () => {
   expect(next.claims.map((c) => c.amountSats)).toEqual([10]);
 
   const [, invite] = await call('GET', `/sdk/rounds/${round.inviteToken}`);
-  expect(invite).toMatchObject({ runnerOnline: true, budgetSats: 50_000, paid: 1, payouts: 2 });
+  expect(invite).toMatchObject({ runnerOnline: true, paid: 1, payouts: 2 });
 });
 
 test('payment proofs check hash and amount of the invoice', () => {

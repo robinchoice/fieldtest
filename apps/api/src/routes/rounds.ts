@@ -7,7 +7,7 @@ import {
   updateFindingSchema,
   updateRoundSchema,
 } from '@app/shared';
-import { and, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { approveClaim, approveDueClaims, lowerClaim, mergeFinding, rejectClaim, settleFinding } from '../lib/claims';
@@ -187,9 +187,13 @@ export const roundRoutes = new Hono<AppEnv>()
     const round = await ownRound(c);
     const db = c.get('db');
     await approveDueClaims(db, [round.id]);
-    const [sessions, totals, [runner], count] = await Promise.all([
+    const live = and(isNull(testSessions.endedAt), gt(testSessions.lastSeenAt, new Date(Date.now() - LIVE_MS)));
+    const [[sessions], totals, [runner], findingCount] = await Promise.all([
       db
-        .select({ lastSeenAt: testSessions.lastSeenAt, endedAt: testSessions.endedAt })
+        .select({
+          total: count(),
+          testingNow: sql`count(*) filter (where ${live})`.mapWith(Number),
+        })
         .from(testSessions)
         .where(eq(testSessions.roundId, round.id)),
       claimTotals(db, round.id),
@@ -199,9 +203,9 @@ export const roundRoutes = new Hono<AppEnv>()
     return c.json({
       round: { ...round, inviteUrl: inviteUrl(round) },
       stats: {
-        sessions: sessions.length,
-        testingNow: sessions.filter((s) => !s.endedAt && Date.now() - s.lastSeenAt.getTime() < LIVE_MS).length,
-        findings: count,
+        sessions: sessions!.total,
+        testingNow: sessions!.testingNow,
+        findings: findingCount,
         ...totals,
       },
       runner: runner

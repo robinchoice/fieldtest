@@ -36,7 +36,6 @@ type State = {
   pendingSats: number;
   goals: { goal: string; reached: boolean }[];
   feedback: number;
-  ended: boolean;
   log: LogEntry[];
 };
 type Anchor = { label: string; screen: string; auto?: string };

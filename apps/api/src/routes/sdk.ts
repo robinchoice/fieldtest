@@ -79,7 +79,6 @@ async function invitation(c: Context<AppEnv>, invite: string) {
     payouts: payouts.length,
     medianSeconds: waits.length ? Math.round(waits[Math.floor(waits.length / 2)]!) : null,
     runnerOnline: runnerOnline(runner),
-    budgetSats: runner?.budgetSats ?? null,
   };
 }
 

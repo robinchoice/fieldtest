@@ -45,10 +45,12 @@ export async function recordActivity(
       active = next;
     }
 
-    const known = await tx
-      .select({ kind: events.kind, label: events.label, screen: events.screen })
-      .from(events)
-      .where(and(eq(events.sessionId, session.id), inArray(events.kind, ['screen', 'goal'])));
+    const known = input.events.length
+      ? await tx
+          .select({ kind: events.kind, label: events.label, screen: events.screen })
+          .from(events)
+          .where(and(eq(events.sessionId, session.id), inArray(events.kind, ['screen', 'goal'])))
+      : [];
     const screens = new Set(known.filter((e) => e.kind === 'screen').map((e) => e.screen));
     const goals = new Set(known.filter((e) => e.kind === 'goal').map((e) => e.label));
 
@@ -108,7 +110,7 @@ export async function sessionState(db: Database, session: Session, round: Round)
   ]);
 
   const entries = [
-    ...log.map((e) => ({ kind: e.kind, label: e.label, screen: e.screen, sats: e.sats, at: e.at })),
+    ...log,
     ...notes.map((n) => ({ kind: 'feedback', label: n.label, screen: n.type, sats: 0, at: n.at })),
     ...payouts
       .filter((p) => p.status === 'paid' && p.paidAt)
@@ -135,7 +137,6 @@ export async function sessionState(db: Database, session: Session, round: Round)
     pendingSats: sum(['review', 'approved', 'paying']),
     goals: round.goals.map((goal) => ({ goal, reached: reached.has(goal) })),
     feedback: notes.length,
-    ended: !!session.endedAt,
     log: entries,
   };
 }

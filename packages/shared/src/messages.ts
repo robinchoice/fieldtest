@@ -132,7 +132,6 @@ const de = {
   passkeyUsedOn: (date: string) => `zuletzt benutzt am ${date}`,
   passkeySynced: 'synchronisiert',
   passkeyOneDevice: 'nur auf einem Gerät',
-  unsubscribing: 'Wird abbestellt …',
   unsubscribed: 'Abbestellt',
   unsubscribedText: (app: string) =>
     `${app} schickt dir keine Updates mehr. Login-Mails kommen weiter, wenn du sie anforderst.`,
@@ -486,7 +485,6 @@ const en: Messages = {
   passkeyUsedOn: (date) => `last used on ${date}`,
   passkeySynced: 'synced',
   passkeyOneDevice: 'on one device only',
-  unsubscribing: 'Unsubscribing …',
   unsubscribed: 'Unsubscribed',
   unsubscribedText: (app) => `${app} won't send you updates anymore. Login emails still arrive when you request them.`,
   resubscribe: 'Subscribe again',
