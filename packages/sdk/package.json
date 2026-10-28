@@ -4,5 +4,6 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit"
-  }
+  },
+  "license": "AGPL-3.0-or-later"
 }
